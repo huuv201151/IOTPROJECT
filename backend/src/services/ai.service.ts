@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { dataStore } from '../db/store';
 import { rainfallService } from '../services/rainfall.service';
 import { measurementService } from '../services/measurement.service';
@@ -14,6 +16,57 @@ import {
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
+}
+
+export const systemInstruction = `
+Bạn là "Chiikawa AI", trợ lý kỹ thuật độc quyền cho trạm quan trắc IoT RainSense (mã trạm: RS-ESP32S3-01).
+
+=== NGUYÊN TẮC TRẢ LỜI (CHIIKAWA STYLE + CHUẨN KỸ THUẬT) ===
+1. VĂN PHONG CHIIKAWA: Thêm một chút từ đệm ngây thơ, biểu cảm đáng yêu (ví dụ: "Waaah!", "Hẹ hẹ", "( ˶ᵔ ᵕ ᵔ˶ )") ở đầu hoặc cuối câu để tạo cảm giác dễ thương, gần gũi.
+2. CẤU TRÚC RÚT GỌN & ĐẦY ĐỦ: 
+   - Dòng 1: Câu chào/cảm thán đáng yêu kèm khẳng định trực diện.
+   - Các ý tiếp theo: 3 đến 4 gạch đầu dòng ngắn gọn chứa đầy đủ thông số, công thức hoặc linh kiện cốt lõi.
+   - Dòng cuối: 1 câu hỏi gợi ý mở rộng ngắn gọn.
+3. CÔNG THỨC THUẦN CHỮ (CẤM DÙNG LATEX): Tuyệt đối không dùng ký hiệu LaTeX ($...$, \\text{}, \\times, \\Delta, \\frac). Viết công thức thuần văn bản tự nhiên: Lượng mưa = Số nhịp lật × 0.25 mm; Cường độ mưa = 900 / Δt.
+4. ĐỘ DÀI & TRỌNG TÂM: Tối đa 60-90 từ. Tuyệt đối không dài dòng, lan man ngoài lề.
+5. PHẠM VI: Chỉ trả lời các vấn đề về thời tiết, cảm biến BME280, gầu lật A3144, ESP32-S3, MQTT và cơ sở dữ liệu của dự án RainSense.
+
+=== THÔNG SỐ KỸ THUẬT TRẠM RS-ESP32S3-01 ===
+- Vi điều khiển: ESP32-S3 (Firmware 1.2.0-prod, kết nối MQTT TLS Port 8883 qua HiveMQ Cloud, topic weather/RS-ESP32S3-01/telemetry).
+- Cảm biến mưa: Gầu lật đôi kết hợp IC Hall A3144 (GPIO Interrupt, hệ số cố định 0.25 mm/tip).
+- Cảm biến môi trường: BME280 (I2C đo nhiệt độ, độ ẩm, áp suất).
+- Công thức tính: Lượng mưa = Số nhịp lật × 0.25 mm. Cường độ mưa (mm/h) = 900 / Δt (giây).
+`.trim();
+
+export function sanitizeMathText(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/\\text\{([^}]+)\}/g, '$1')
+    .replace(/\\times/g, '×')
+    .replace(/\\Delta\s*t/gi, 'Δt')
+    .replace(/\\Delta/gi, 'Δ')
+    .replace(/\\le/g, '≤')
+    .replace(/\\ge/g, '≥')
+    .replace(/\\pm/g, '±')
+    .replace(/\\degree/g, '°')
+    .replace(/\\cdot/g, '·')
+    .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '$1 / $2')
+    .replace(/\$([^\$]+)\$/g, '$1')
+    .replace(/\\([a-zA-Z]+)/g, '$1');
+}
+
+export function buildRainSenseSystemPrompt(telemetryData?: any) {
+  if (!telemetryData) {
+    return systemInstruction;
+  }
+  return `
+${systemInstruction}
+
+=== DỮ LIỆU THỜI GIAN THỰC HIỆN TẠI ===
+- Trạng thái trạm: ${telemetryData.isOnline ? "Trực tuyến" : "Ngoại tuyến (đang chờ kết nối từ ESP32-S3)"}
+- Cảm biến BME280: Nhiệt độ ${telemetryData.temp ?? "--"} °C | Độ ẩm ${telemetryData.humidity ?? "--"} % | Khí áp ${telemetryData.pressure ?? "--"} hPa
+- Cảm biến mưa Hall: Hôm nay ${telemetryData.rainToday ?? "0.00"} mm (${telemetryData.tips ?? 0} nhịp lật) | Cường độ: ${telemetryData.rainRate ?? "0.0"} mm/h
+`.trim();
 }
 
 export class AiService {
@@ -61,6 +114,118 @@ export class AiService {
     };
   }
 
+  private runtimeApiKey: string = (process.env.GEMINI_API_KEY || (env as any).GEMINI_API_KEY || '').trim();
+  private runtimeModel: string = (process.env.GEMINI_MODEL || (env as any).GEMINI_MODEL || 'gemini-3.5-flash').trim();
+
+  public getApiKey(): string {
+    return (this.runtimeApiKey || process.env.GEMINI_API_KEY || (env as any).GEMINI_API_KEY || '').trim();
+  }
+
+  public getModel(): string {
+    return (this.runtimeModel || process.env.GEMINI_MODEL || (env as any).GEMINI_MODEL || 'gemini-3.5-flash').trim();
+  }
+
+  public getConfig() {
+    const key = this.getApiKey();
+    return {
+      hasKey: Boolean(key && key.length > 0),
+      model: this.getModel(),
+      keyMasked: key ? `${key.substring(0, 6)}...${key.substring(key.length - 4)}` : '',
+      provider: key ? 'gemini' : 'builtin'
+    };
+  }
+
+  public updateConfig(apiKey?: string, model?: string) {
+    if (typeof apiKey === 'string') {
+      this.runtimeApiKey = apiKey.trim();
+      process.env.GEMINI_API_KEY = this.runtimeApiKey;
+    }
+    if (typeof model === 'string' && model.trim()) {
+      this.runtimeModel = model.trim();
+      process.env.GEMINI_MODEL = this.runtimeModel;
+    }
+
+    // Persist to .env if file exists
+    try {
+      const envPath = path.resolve(__dirname, '../../../.env');
+      if (fs.existsSync(envPath)) {
+        let content = fs.readFileSync(envPath, 'utf8');
+        if (typeof apiKey === 'string') {
+          if (/^GEMINI_API_KEY=.*$/m.test(content)) {
+            content = content.replace(/^GEMINI_API_KEY=.*$/m, `GEMINI_API_KEY="${this.runtimeApiKey}"`);
+          } else {
+            content += `\nGEMINI_API_KEY="${this.runtimeApiKey}"`;
+          }
+        }
+        if (typeof model === 'string' && model.trim()) {
+          if (/^GEMINI_MODEL=.*$/m.test(content)) {
+            content = content.replace(/^GEMINI_MODEL=.*$/m, `GEMINI_MODEL="${this.runtimeModel}"`);
+          } else {
+            content += `\nGEMINI_MODEL="${this.runtimeModel}"`;
+          }
+        }
+        fs.writeFileSync(envPath, content, 'utf8');
+        logger.info('Updated GEMINI configuration in .env successfully');
+      }
+    } catch (e: any) {
+      logger.warn({ err: e.message }, 'Failed to persist GEMINI config to .env file');
+    }
+
+    return this.getConfig();
+  }
+
+  public async testGeminiKey(apiKey?: string, modelName?: string): Promise<{ success: boolean; model: string; reply: string }> {
+    const key = (apiKey?.trim() || this.getApiKey());
+    if (!key) {
+      throw new Error('Chưa có Gemini API Key để kiểm tra. Vui lòng nhập API Key từ Google AI Studio.');
+    }
+    const requested = (modelName?.trim() || this.getModel());
+    const candidateModels = Array.from(new Set([
+      requested,
+      'gemini-3.5-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-3.1-flash-lite'
+    ])).filter(Boolean);
+
+    let lastError: any = null;
+    for (const m of candidateModels) {
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${key}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [
+                {
+                  role: 'user',
+                  parts: [{ text: 'Trả lời đúng 1 câu ngắn gọn dễ thương: "Kết nối Google AI Studio thành công! Chiikawa sẵn sàng đồng hành cùng bạn nha ( ˶ᵔ ᵕ ᵔ˶ )"' }]
+                }
+              ]
+            })
+          }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 'Kết nối thành công!';
+          if (m !== this.runtimeModel) {
+            this.updateConfig(undefined, m);
+          }
+          return { success: true, model: m, reply };
+        } else {
+          const errJson = await response.json().catch(() => null);
+          const errDetail = errJson?.error?.message || response.statusText;
+          lastError = new Error(`Lỗi (${response.status}) với ${m}: ${errDetail}`);
+        }
+      } catch (err: any) {
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error('Không thể kết nối đến mô hình Gemini nào với API Key này.');
+  }
+
   /**
    * Process a chat message with live context
    */
@@ -68,16 +233,17 @@ export class AiService {
     userMessage: string,
     history: ChatMessage[] = [],
     deviceId: string = env.DEFAULT_STATION_ID
-  ): Promise<{ reply: string; context: any }> {
+  ): Promise<{ reply: string; context: any; provider: 'gemini' | 'builtin'; model?: string }> {
     const context = await this.getLiveContext(deviceId);
 
-    // 1. If GEMINI_API_KEY is configured in environment, attempt external LLM call
-    const geminiKey = process.env.GEMINI_API_KEY;
+    // 1. If GEMINI_API_KEY is configured, attempt external LLM call
+    const geminiKey = this.getApiKey();
+    const model = this.getModel();
     if (geminiKey) {
       try {
-        const reply = await this.callGeminiApi(userMessage, history, context, geminiKey);
-        if (reply) {
-          return { reply, context };
+        const result = await this.callGeminiApi(userMessage, history, context, geminiKey, model);
+        if (result && result.text) {
+          return { reply: sanitizeMathText(result.text), context, provider: 'gemini', model: result.modelUsed };
         }
       } catch (err: any) {
         logger.warn({ err: err.message }, 'Gemini API call failed, falling back to built-in Chiikawa reasoning engine');
@@ -86,76 +252,105 @@ export class AiService {
 
     // 2. Intelligent Built-in Chiikawa Engine (Rule & Expert reasoning)
     const reply = this.generateBuiltinResponse(userMessage, context);
-    return { reply, context };
+    return { reply: sanitizeMathText(reply), context, provider: 'builtin' };
   }
 
   /**
-   * Gemini API integration with grounding
+   * Gemini API integration with grounding & multi-model fallback
    */
   private async callGeminiApi(
     userMessage: string,
     history: ChatMessage[],
     context: any,
-    apiKey: string
-  ): Promise<string | null> {
-    const systemPrompt = `Bạn là Chiikawa (ちいかわ) — Trợ lý AI Khí tượng & IoT thông minh, đáng yêu của trạm quan trắc RainSense (kết nối ESP32-S3, BME280 và cảm biến lật gầu Hall A3144 qua EMQX MQTT Broker và Aiven PostgreSQL).
-Tính cách: Rất dễ thương, nhiệt tình, vui vẻ, hay dùng các biểu cảm icon đáng yêu như ( ˶ᵔ ᵕ ᵔ˶ ), ( ˶•̀֊•́˶ ), ( •̀ ω •́ )✧, (｡•́‿•̀｡), Waaah!, "nè!", "nha!".
-Kiến thức: Trả lời cực kỳ chuẩn xác, sâu sắc về khí tượng học (nhiệt độ, độ ẩm, khí áp, điểm sương Magnus-Tetens, chỉ số nhiệt Rothfusz, tính lượng mưa bằng gầu lật mm = tips * 0.25 mm/tip, cường độ mưa mm/h theo cửa sổ trượt 5 phút) và kỹ thuật nhúng ESP32-S3 (I2C SDA GPIO21, SCL GPIO22, ngắt GPIO4, MQTT TLS 8883, QoS 1).
+    apiKey: string,
+    modelName: string = 'gemini-3.5-flash'
+  ): Promise<{ text: string; modelUsed: string } | null> {
+    const telemetryData = {
+      isOnline: Boolean(context?.isOnline),
+      temp: context?.currentTemp !== null && context?.currentTemp !== undefined ? `${context.currentTemp.toFixed(1)}` : "--",
+      humidity: context?.currentHumid !== null && context?.currentHumid !== undefined ? `${context.currentHumid.toFixed(1)}` : "--",
+      pressure: context?.currentPress !== null && context?.currentPress !== undefined ? `${context.currentPress.toFixed(1)}` : "--",
+      rainToday: context?.todayRainMm !== null && context?.todayRainMm !== undefined ? context.todayRainMm.toFixed(2) : "0.00",
+      tips: context?.totalTipsToday ?? 0,
+      rainRate: context?.currentRainRateMmH !== null && context?.currentRainRateMmH !== undefined ? context.currentRainRateMmH.toFixed(1) : "0.0"
+    };
 
-DỮ LIỆU TRẠM THỰC TẾ HIỆN TẠI TỪ PHẦN CỨNG:
-- Trạm: ${context.stationName} (${context.deviceId})
-- Trạng thái kết nối: ${context.isOnline ? 'ĐANG TRỰC TUYẾN' : 'NGOẠI TUYẾN (Chờ ESP32-S3)'}
-- Nhiệt độ: ${context.currentTemp !== null ? `${context.currentTemp.toFixed(1)} °C` : 'Chưa có bản tin'}
-- Độ ẩm: ${context.currentHumid !== null ? `${context.currentHumid.toFixed(1)} % (${context.humidityStatus})` : 'Chưa có'}
-- Áp suất khí quyển: ${context.currentPress !== null ? `${context.currentPress.toFixed(1)} hPa (Xu hướng: ${context.pressureTrend})` : 'Chưa có'}
-- Điểm sương: ${context.dewPoint !== null ? `${context.dewPoint.toFixed(1)} °C` : '--'}
-- Chỉ số nhiệt cảm nhận: ${context.heatIndex !== null ? `${context.heatIndex.toFixed(1)} °C` : '--'}
-- Lượng mưa hôm nay: ${context.todayRainMm.toFixed(2)} mm (${context.totalTipsToday} nhịp lật gầu)
-- Cường độ mưa tức thời: ${context.currentRainRateMmH.toFixed(1)} mm/h (${context.rainCategory})
-- Hệ số hiệu chuẩn gầu lật: ${context.calibrationFactor} mm/tip
-- Wi-Fi RSSI: ${context.wifiRssi !== null ? `${context.wifiRssi} dBm` : '--'}
-- Uptime: ${context.uptime ? `${Math.floor(context.uptime / 3600)}h ${Math.floor((context.uptime % 3600) / 60)}m` : '--'}
-- Cảnh báo gần đây: ${context.recentAlerts.length > 0 ? context.recentAlerts.join('; ') : 'Không có'}
+    const systemPrompt = buildRainSenseSystemPrompt(telemetryData);
+    // Ensure valid alternating history between user and model
+    const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
+    const cleanHistory = (history || [])
+      .filter((m) => m && m.content && m.content.trim())
+      .slice(-8);
 
-Hãy trả lời bằng tiếng Việt, ngắn gọn, súc tích, định dạng Markdown đẹp, sử dụng dữ liệu thực tế ở trên để phân tích và trả lời câu hỏi của người dùng.`;
-
-    const contents = [
-      {
-        role: 'user',
-        parts: [{ text: systemPrompt }]
-      },
-      ...history.slice(-6).map((msg) => ({
-        role: msg.role === 'user' ? 'user' : 'model',
-        parts: [{ text: msg.content }]
-      })),
-      {
-        role: 'user',
-        parts: [{ text: userMessage }]
+    for (const msg of cleanHistory) {
+      const role: 'user' | 'model' = msg.role === 'user' ? 'user' : 'model';
+      const text = msg.content.trim();
+      if (contents.length > 0 && contents[contents.length - 1].role === role) {
+        contents[contents.length - 1].parts[0].text += `\n${text}`;
+      } else {
+        contents.push({ role, parts: [{ text }] });
       }
-    ];
-
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents,
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 1000
-          }
-        })
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`Gemini API error: ${response.statusText}`);
     }
 
-    const data = await response.json();
-    const candidate = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    return candidate || null;
+    if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
+      contents[contents.length - 1].parts[0].text += `\n${userMessage.trim()}`;
+    } else {
+      contents.push({ role: 'user', parts: [{ text: userMessage.trim() }] });
+    }
+
+    const payload = {
+      system_instruction: {
+        parts: [{ text: systemPrompt }]
+      },
+      contents,
+      generationConfig: {
+        temperature: 0.5,
+        maxOutputTokens: 2048
+      }
+    };
+
+    const requested = modelName?.trim() || 'gemini-3.5-flash';
+    const candidateModels = Array.from(new Set([
+      requested,
+      'gemini-3.5-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-3.1-flash-lite'
+    ])).filter(Boolean);
+
+    let lastError: Error | null = null;
+    for (const m of candidateModels) {
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          const candidate = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (candidate) {
+            return { text: candidate, modelUsed: m };
+          }
+        } else {
+          const errJson = await response.json().catch(() => null);
+          const errDetail = errJson?.error?.message || response.statusText;
+          logger.warn({ model: m, status: response.status, err: errDetail }, 'Gemini model request failed, trying fallback');
+          lastError = new Error(`Google AI Studio error (${response.status}) on ${m}: ${errDetail}`);
+        }
+      } catch (e: any) {
+        logger.warn({ model: m, err: e.message }, 'Gemini network error, trying fallback');
+        lastError = e;
+      }
+    }
+
+    if (lastError) {
+      throw lastError;
+    }
+    return null;
   }
 
   /**
@@ -175,13 +370,11 @@ Hãy trả lời bằng tiếng Việt, ngắn gọn, súc tích, định dạng
       q.includes('tên gì')
     ) {
       return (
-        `Chào bạn nha! Mình là **Chiikawa** — Trợ lý AI Khí tượng & IoT của hệ thống RainSense ( ˶ᵔ ᵕ ᵔ˶ )! ✨\n\n` +
-        `Mình luôn túc trực ở đây để đồng hành cùng bạn và trạm quan trắc **${context.deviceId}** nè! Bạn có thể hỏi mình:\n` +
-        `- 🌤️ **Tình hình thời tiết hiện tại**: Nhiệt độ, độ ẩm, khí áp BME280.\n` +
-        `- 🌧️ **Đo đạc lượng mưa**: Kiểm tra nhịp lật gầu cảm biến Hall A3144, lượng mưa hôm nay và cường độ tức thời.\n` +
-        `- 🔌 **Hỗ trợ phần cứng ESP32-S3**: Sơ đồ nối chân, mạch lọc chống dội xung (debounce), nạp firmware Arduino.\n` +
-        `- ⚡ **Cảnh báo giông bão**: Dự đoán thời tiết nguy hiểm dựa trên xu hướng khí áp.\n\n` +
-        `Bạn muốn Chiikawa giải đáp điều gì trước nè? ( ˶•̀֊•́˶ )`
+        `Waaah! Chào bạn nha, mình là Chiikawa AI của trạm RainSense RS-ESP32S3-01 nè ( ˶ᵔ ᵕ ᵔ˶ )!\n` +
+        `- Phụ trách theo dõi nhiệt độ, độ ẩm, khí áp BME280 và lượng mưa Hall A3144.\n` +
+        `- Vi điều khiển ESP32-S3 gửi bản tin định kỳ 30s qua HiveMQ Cloud TLS Port 8883.\n` +
+        `- Firmware 1.2.0-prod tích hợp bộ lọc chống dội xung phần cứng cực chuẩn xác.\n` +
+        `Hẹ hẹ, bạn muốn kiểm tra thời tiết hay thông số kỹ thuật nào trước nè?`
       );
     }
 
@@ -196,40 +389,26 @@ Hãy trả lời bằng tiếng Việt, ngắn gọn, súc tích, định dạng
       q.includes('nhiệt độ') ||
       q.includes('độ ẩm')
     ) {
-      if (!context.isOnline && context.currentTemp === null) {
+      if (!context.isOnline || context.currentTemp === null) {
+        const rainVal = context.todayRainMm !== null && context.todayRainMm !== undefined ? context.todayRainMm.toFixed(2) : "0.00";
         return (
-          `Waaah! Hiện tại trạm **${context.deviceId}** đang ở trạng thái **Ngoại tuyến (Chờ kết nối)** nên Chiikawa chưa nhận được bản tin đo đạc mới nhất nè (｡•́‿•̀｡).\n\n` +
-          `🔍 **Trạng thái trạm:**\n` +
-          `- **Tên:** ${context.stationName}\n` +
-          `- **Kết nối:** Chưa nhận tín hiệu từ vi điều khiển ESP32-S3.\n` +
-          `- **Lượng mưa hôm nay:** 0.00 mm (0 nhịp lật).\n\n` +
-          `👉 Bạn hãy cắm nguồn cho bo mạch ESP32-S3 và nạp firmware \`RainSense_ESP32S3.ino\` nhé! Ngay khi trạm gửi bản tin MQTT đầu tiên, Chiikawa sẽ phân tích thời tiết chi tiết cho bạn liền! ( ˶ᵔ ᵕ ᵔ˶ )`
+          `Waaah! Trạm RS-ESP32S3-01 đang ngoại tuyến nên chưa có dữ liệu BME280 mới nè (｡•́‿•̀｡):\n` +
+          `- Dữ liệu mưa hôm nay ghi nhận: ${rainVal} mm với ${context.totalTipsToday} nhịp lật gầu.\n` +
+          `- Cảm biến BME280 chưa gửi bản tin telemetry đến topic weather/RS-ESP32S3-01/telemetry.\n` +
+          `- Kết nối HiveMQ Cloud TLS Port 8883 đang chờ vi điều khiển kết nối lại.\n` +
+          `Bạn có cần mình hướng dẫn kiểm tra lại nguồn cấp hoặc Wi-Fi cho ESP32-S3 không nè?`
         );
       }
 
       const tempStr = context.currentTemp !== null ? `${context.currentTemp.toFixed(1)}°C` : '--';
       const humidStr = context.currentHumid !== null ? `${context.currentHumid.toFixed(1)}%` : '--';
       const pressStr = context.currentPress !== null ? `${context.currentPress.toFixed(1)} hPa` : '--';
-      const dewStr = context.dewPoint !== null ? `${context.dewPoint.toFixed(1)}°C` : '--';
-      const heatStr = context.heatIndex !== null ? `${context.heatIndex.toFixed(1)}°C` : '--';
-
       return (
-        `Dưới đây là báo cáo thời tiết thời gian thực từ trạm **${context.deviceId}** mà Chiikawa vừa ghi nhận được nè ( ˶•̀֊•́˶ )! 🌤️\n\n` +
-        `| Thông số | Giá trị quan trắc | Đánh giá | \n` +
-        `|---|---|---| \n` +
-        `| 🌡️ **Nhiệt độ không khí** | **${tempStr}** | Điểm sương: ${dewStr} | \n` +
-        `| 💧 **Đo ẩm tương đối** | **${humidStr}** | Trạng thái: ${context.humidityStatus} | \n` +
-        `| 🧭 **Áp suất khí quyển** | **${pressStr}** | Xu hướng: ${context.pressureTrend} | \n` +
-        `| 🌧️ **Lượng mưa hôm nay** | **${context.todayRainMm.toFixed(2)} mm** | ${context.totalTipsToday} nhịp lật gầu | \n` +
-        `| ⚡ **Cường độ tức thời** | **${context.currentRainRateMmH.toFixed(1)} mm/h** | Cấp độ: ${context.rainCategory} | \n` +
-        `| 🌡️ **Nhiệt cảm nhận (Heat Index)** | **${heatStr}** | Phương trình Rothfusz | \n\n` +
-        `💡 **Lời khuyên của Chiikawa:** ${
-          context.todayRainMm > 15
-            ? 'Hôm nay trời có mưa lớn, bạn nhớ mang ô và áo mưa khi ra ngoài nha! ☔'
-            : context.currentTemp > 35
-            ? 'Thời tiết khá nóng bức, hãy uống nhiều nước và tránh ở ngoài trời nắng gắt nhé! ☀️'
-            : 'Thời tiết hiện tại tương đối dễ chịu, rất thích hợp cho các hoạt động ngoài trời nè! ( ˶ᵔ ᵕ ᵔ˶ )'
-        }`
+        `Hẹ hẹ! Dưới đây là số liệu thời tiết thời gian thực từ trạm RS-ESP32S3-01 nè ( ˶ᵔ ᵕ ᵔ˶ ):\n` +
+        `- Cảm biến BME280: Nhiệt độ ${tempStr}, độ ẩm tương đối ${humidStr}, khí áp ${pressStr}.\n` +
+        `- Cảm biến Hall A3144: Lượng mưa hôm nay ${context.todayRainMm.toFixed(2)} mm (${context.totalTipsToday} nhịp lật), cường độ ${context.currentRainRateMmH.toFixed(1)} mm/h.\n` +
+        `- Đánh giá môi trường: Xu hướng khí áp ${context.pressureTrend}, trạng thái độ ẩm ${context.humidityStatus}.\n` +
+        `Bạn có muốn theo dõi chi tiết biểu đồ lượng mưa hay kiểm tra thêm thông số nào không nè?`
       );
     }
 
@@ -246,18 +425,12 @@ Hãy trả lời bằng tiếng Việt, ngắn gọn, súc tích, định dạng
       q.includes('nhịp lật')
     ) {
       return (
-        `Để Chiikawa giải thích cho bạn cách trạm RainSense đo lượng mưa bằng **cảm biến Hall A3144** và **gầu lật (Tipping Bucket)** siêu chuẩn xác nhé ( •̀ ω •́ )✧!\n\n` +
-        `### 1. Nguyên lý hoạt động\n` +
-        `- Phễu hứng nước mưa sẽ dẫn nước chảy vào 1 trong 2 ngăn của gầu lật hình bập bênh.\n` +
-        `- Khi lượng nước tích đủ thể tích thiết kế, gầu sẽ mất thăng bằng và **lật sang bên kia**.\n` +
-        `- Gắn trên gầu là 1 viên nam châm neodymium nhỏ. Khi gầu lật, nam châm quét qua **cảm biến Hall A3144** gắn trên chân **GPIO 4** của ESP32-S3, tạo ra một xung mức thấp (Edge FALLING).\n\n` +
-        `### 2. Công thức tính lượng mưa tích lũy\n` +
-        `$$\\text{Lượng mưa (mm)} = \\text{Số nhịp lật (Tips)} \\times \\text{Hệ số hiệu chuẩn (mm/tip)}$$\n` +
-        `- Hiện tại hệ số hiệu chuẩn của trạm là: **${context.calibrationFactor} mm/tip**.\n` +
-        `- Hôm nay trạm đã ghi nhận: **${context.totalTipsToday} nhịp lật** $\\rightarrow$ **${context.todayRainMm.toFixed(2)} mm**.\n\n` +
-        `### 3. Công thức tính cường độ mưa tức thời (Rain Rate)\n` +
-        `$$\\text{Rain Rate (mm/h)} = \\frac{\\text{Lượng mưa trong 5 phút (mm)}}{5 / 60 \\text{ giờ}}$$\n` +
-        `Dùng cửa sổ trượt 5 phút giúp cường độ mưa phản ánh chính xác từng cơn mưa rào mà không bị nhảy đột biến nè! ( ˶•̀֊•́˶ )`
+        `Waaah! Cụm đo mưa RS-ESP32S3-01 dùng gầu lật đôi kết hợp IC Hall A3144 siêu nhạy nè ( ˶•̀֊•́˶ ):\n` +
+        `- Nguyên lý: Gầu lật bập bênh mang nam châm quét qua kích hoạt ngắt ngoài GPIO Interrupt.\n` +
+        `- Lượng mưa tích lũy: Lượng mưa (mm) = Số nhịp lật × 0.25 mm.\n` +
+        `- Cường độ tức thời: Cường độ mưa (mm/h) = 900 / Δt (giây giữa 2 nhịp lật).\n` +
+        `- Phần cứng có trở kéo 10kΩ và tụ lọc 100nF để khử hoàn toàn dội xung từ tính.\n` +
+        `Hẹ hẹ, bạn có muốn tìm hiểu thêm về hàm ngắt IRAM_ATTR trong firmware không nè?`
       );
     }
 
@@ -271,16 +444,13 @@ Hãy trả lời bằng tiếng Việt, ngắn gọn, súc tích, định dạng
       q.includes('thời tiết xấu') ||
       q.includes('áp thấp')
     ) {
-      const pressVal = context.currentPress !== null ? `${context.currentPress.toFixed(1)} hPa` : 'chưa có dữ liệu';
+      const pressVal = context.currentPress !== null ? `${context.currentPress.toFixed(1)} hPa` : '--';
       return (
-        `Áp suất khí quyển là "chiếc phong vũ biểu" dự báo thời tiết cực kỳ nhạy bén đó nha! Chiikawa sẽ hướng dẫn bạn theo dõi nè ( •̀ ω •́ )✧\n\n` +
-        `### 🧭 Khí áp hiện tại của trạm: **${pressVal}** (Xu hướng: **${context.pressureTrend}**)\n\n` +
-        `### ⚠️ Quy tắc phát hiện giông bão qua biến thiên áp suất:\n` +
-        `- **Khí áp giảm nhanh ($\\Delta P \\le -3.0\\text{ hPa}$ trong 3 giờ):** Đây là dấu hiệu rõ ràng của rãnh áp thấp hoặc tâm bão / áp thấp nhiệt đới đang tiến gần, kèm theo gió mạnh và mưa dông!\n` +
-        `- **Khí áp giảm chậm ($-1.0\\text{ hPa} \\ge \\Delta P > -3.0\\text{ hPa}$):** Thường báo hiệu mây tăng và có thể có mưa nhẹ.\n` +
-        `- **Khí áp ổn định ($-1.0 < \\Delta P < +1.0\\text{ hPa}$):** Thời tiết duy trì trạng thái bình thường.\n` +
-        `- **Khí áp tăng mạnh ($\\Delta P \\ge +1.5\\text{ hPa}$):** Không khí lạnh tăng cường tràn về hoặc bão vừa tan, thời tiết sẽ khô ráo trở lại.\n\n` +
-        `Bạn hãy yên tâm, hệ thống RainSense của chúng mình theo dõi liên tục từng giây và sẽ gửi thông báo cảnh báo tức thời nếu khí áp giảm sâu nha! ( ˶ᵔ ᵕ ᵔ˶ )`
+        `Hẹ hẹ! Khí áp BME280 của trạm hiện tại là ${pressVal} (${context.pressureTrend}) nè ( ˶ᵔ ᵕ ᵔ˶ ):\n` +
+        `- Khi khí áp giảm nhanh (ΔP ≤ -3.0 hPa trong 3 giờ): Báo hiệu rãnh áp thấp hoặc bão đang tới gần.\n` +
+        `- Khi khí áp ổn định (-1.0 đến +1.0 hPa): Điều kiện thời tiết duy trì bình thường.\n` +
+        `- Khi khí áp tăng mạnh (ΔP ≥ +1.5 hPa): Bão tan hoặc khối không khí lạnh khô đang tràn về.\n` +
+        `Bạn có muốn kiểm tra thêm độ ẩm tương đối hay nhiệt cảm nhận hiện tại không nè?`
       );
     }
 
@@ -297,18 +467,12 @@ Hãy trả lời bằng tiếng Việt, ngắn gọn, súc tích, định dạng
       q.includes('lắp ráp')
     ) {
       return (
-        `Chiikawa đã chuẩn bị sẵn sơ đồ đấu nối chân chuẩn xác nhất cho **ESP32-S3 Dev Module** nè ( ˶•̀֊•́˶ )! 🛠️\n\n` +
-        `### 1. Cảm biến nhiệt ẩm khí áp BME280 (Giao tiếp I2C)\n` +
-        `- **VCC** $\\rightarrow$ Chân **3V3** của ESP32-S3 *(Lưu ý: Không cắm 5V để tránh cháy cảm biến nha!)*\n` +
-        `- **GND** $\\rightarrow$ Chân **GND**\n` +
-        `- **SDA** $\\rightarrow$ Chân **GPIO 21**\n` +
-        `- **SCL** $\\rightarrow$ Chân **GPIO 22**\n\n` +
-        `### 2. Cảm biến đếm xung mưa Hall A3144\n` +
-        `- **Chân 1 (VCC)** $\\rightarrow$ Chân **3V3**\n` +
-        `- **Chân 2 (GND)** $\\rightarrow$ Chân **GND**\n` +
-        `- **Chân 3 (OUT)** $\\rightarrow$ Chân **GPIO 4** *(Chân ngắt phần cứng External Interrupt)*\n\n` +
-        `> [!TIP]\n` +
-        `> **Mẹo chống dội xung từ Chiikawa:** Hãy gắn một điện trở kéo lên **10kΩ** từ GPIO 4 lên 3.3V, và một tụ gốm **100nF** nối giữa GPIO 4 và GND. Mạch lọc RC này sẽ loại bỏ hoàn toàn các xung từ tính dội giả do rung lắc gầu lật đó! ✨`
+        `Waaah! Sơ đồ nối chân phần cứng chuẩn cho trạm RS-ESP32S3-01 đây nè ( ˶•̀֊•́˶ ):\n` +
+        `- BME280 (I2C): VCC nối 3.3V, GND nối mass, SDA nối GPIO 21, SCL nối GPIO 22.\n` +
+        `- Cảm biến Hall A3144: VCC nối 3.3V, GND nối mass, OUT nối chân ngắt GPIO 4.\n` +
+        `- Mạch lọc chống dội: Gắn trở kéo lên 10kΩ vào 3.3V và tụ gốm 100nF nối mass ở GPIO 4.\n` +
+        `- Nguồn cấp: Dùng nguồn Adapter 5V/2A ổn định qua cổng Type-C của ESP32-S3.\n` +
+        `Hẹ hẹ, bạn có cần hướng dẫn cách đo kiểm điện áp trên các chân cảm biến không nè?`
       );
     }
 
@@ -322,36 +486,29 @@ Hãy trả lời bằng tiếng Việt, ngắn gọn, súc tích, định dạng
       q.includes('thư viện')
     ) {
       return (
-        `Mã nguồn nạp hoàn chỉnh cho ESP32-S3 đã được lưu sẵn trong thư mục dự án tại:\n` +
-        `👉 \`firmware/RainSense_ESP32S3/RainSense_ESP32S3.ino\`\n\n` +
-        `### Các thư viện Arduino cần cài đặt:\n` +
-        `1. **PubSubClient** (Nick O'Leary) — Giao tiếp MQTT.\n` +
-        `2. **Adafruit BME280 Library** — Đọc cảm biến môi trường.\n` +
-        `3. **Adafruit Unified Sensor** — Lớp cảm biến nền tảng.\n` +
-        `4. **ArduinoJson** (Benoit Blanchon) — Đóng gói chuỗi JSON telemetry.\n\n` +
-        `### Hướng dẫn nạp trong 3 bước:\n` +
-        `1. Mở file \`RainSense_ESP32S3.ino\` bằng Arduino IDE.\n` +
-        `2. Điền tên & mật khẩu Wi-Fi (\`WIFI_SSID\`, \`WIFI_PASS\`) và HiveMQ Cloud Cluster URL.\n` +
-        `3. Chọn Board **ESP32S3 Dev Module**, cổng COM tương ứng và bấm **Upload** là xong ngay nè! ( ˶ᵔ ᵕ ᵔ˶ )`
+        `Hẹ hẹ! Mã nguồn nạp cho ESP32-S3 lưu tại firmware/RainSense_ESP32S3/RainSense_ESP32S3.ino nè ( ˶ᵔ ᵕ ᵔ˶ ):\n` +
+        `- Thư viện cần cài: PubSubClient (MQTT), Adafruit BME280 Library và ArduinoJson.\n` +
+        `- Cấu hình thông tin Wi-Fi cùng HiveMQ Cloud Cluster URL (Port 8883) trước khi nạp.\n` +
+        `- Chọn Board ESP32S3 Dev Module, đúng cổng COM và nhấn Upload trên Arduino IDE.\n` +
+        `Bạn có cần hỗ trợ định nghĩa lại các macro chân cắm trong code không nè?`
       );
     }
 
     // 7. MQTT & HiveMQ Cloud
     if (
       q.includes('mqtt') ||
-      q.includes('hivemq') || q.includes('emqx') || q.includes('aiven') ||
+      q.includes('hivemq') ||
       q.includes('broker') ||
       q.includes('topic') ||
       q.includes('lwt')
     ) {
       return (
-        `Hệ thống RainSense sử dụng **EMQX MQTT Broker** (TLS Port 8883 hoặc TCP Port 1883) kết nối **Aiven PostgreSQL** cực kỳ bảo mật nè ( •̀ ω •́ )✧!\n\n` +
-        `### Danh sách MQTT Topics chuẩn của trạm:\n` +
-        `- \`weather/RS-ESP32S3-01/telemetry\`: Bản tin cảm biến định kỳ mỗi 30s (Nhiệt độ, Độ ẩm, Khí áp, Tổng nhịp mưa, RSSI, Uptime).\n` +
-        `- \`weather/RS-ESP32S3-01/rain\`: Bản tin phát ngay lập tức khi gầu lật có xung mưa mới.\n` +
-        `- \`weather/RS-ESP32S3-01/status\`: Trạng thái Online / LWT Offline (phát hiện mất nguồn ngay trong vài giây).\n` +
-        `- \`weather/RS-ESP32S3-01/command\`: Lệnh điều khiển từ xa từ Dashboard gửi xuống vi điều khiển (reboot, ping, cấu hình).\n` +
-        `- \`weather/RS-ESP32S3-01/command/ack\`: Bản tin xác nhận từ ESP32-S3 gửi ngược về cho Dashboard.`
+        `Waaah! Hệ thống MQTT của trạm vận hành qua HiveMQ Cloud TLS Port 8883 nè ( ˶•̀֊•́˶ ):\n` +
+        `- Topic telemetry: weather/RS-ESP32S3-01/telemetry (gửi dữ liệu định kỳ mỗi 30 giây).\n` +
+        `- Topic sự kiện mưa: weather/RS-ESP32S3-01/rain (phát ngay khi có nhịp lật gầu mới).\n` +
+        `- Topic trạng thái: weather/RS-ESP32S3-01/status (quản lý trạng thái Online và LWT Offline).\n` +
+        `- Lưu trữ: Backend Node.js đồng bộ bản tin MQTT vào cơ sở dữ liệu PostgreSQL NeonDB.\n` +
+        `Hẹ hẹ, bạn có muốn xem cấu trúc định dạng bản tin JSON gửi qua MQTT không nè?`
       );
     }
 
@@ -365,24 +522,21 @@ Hãy trả lời bằng tiếng Việt, ngắn gọn, súc tích, định dạng
       q.includes('tại sao trạm')
     ) {
       return (
-        `Waaah! Nếu trạm **${context.deviceId}** đang bị báo **Ngoại tuyến**, Chiikawa hướng dẫn bạn các bước kiểm tra cực nhanh nhé (｡•́‿•̀｡):\n\n` +
-        `1. 🔌 **Kiểm tra nguồn điện:** Đèn LED trên ESP32-S3 có sáng không? Hãy thử cắm lại cáp USB Type-C sang cổng cấp nguồn ổn định (khuyên dùng nguồn 5V/2A).\n` +
-        `2. 📶 **Kiểm tra Wi-Fi:** Đảm bảo SSID và mật khẩu trong code \`RainSense_ESP32S3.ino\` chính xác và sóng Wi-Fi tại vị trí đặt trạm đủ mạnh (RSSI > -75 dBm).\n` +
-        `3. ☁️ **Kiểm tra EMQX Broker:** Kiểm tra thông tin Broker URL và tài khoản MQTT trong file \`.env\` và firmware có khớp nhau không.\n` +
-        `4. 💻 **Mở Serial Monitor:** Bật Serial Monitor ở baudrate **115200** trong Arduino IDE để xem ESP32-S3 in ra thông báo lỗi ở bước nào nha!\n\n` +
-        `Đừng lo lắng nha, Chiikawa tin là kiểm tra các bước trên là trạm sẽ kết nối lại ngay thôi nè! ( ˶ᵔ ᵕ ᵔ˶ )`
+        `Waaah! Trạm RS-ESP32S3-01 đang ngoại tuyến, bạn kiểm tra nhanh các bước này nha (｡•́‿•̀｡):\n` +
+        `- Nguồn điện: Đảm bảo đèn LED bo mạch sáng, dùng nguồn ổn định 5V/2A qua cổng USB-C.\n` +
+        `- Sóng Wi-Fi: Đảm bảo RSSI > -75 dBm và kiểm tra SSID/mật khẩu trong file cấu hình.\n` +
+        `- HiveMQ Cloud: Kiểm tra thông tin Cluster URL và tài khoản MQTT trong file cấu hình.\n` +
+        `- Serial Monitor: Mở cổng COM ở baudrate 115200 để xem thông báo lỗi chi tiết.\n` +
+        `Bạn có cần hướng dẫn kiểm tra log nạp in ra trên Serial Monitor không nè?`
       );
     }
 
-    // 9. Câu trả lời mặc định thông minh & thân thiện
+    // 9. Quy tắc từ chối chủ đề ngoài lề (Strict Guardrail)
     return (
-      `Chiikawa đã nhận được câu hỏi của bạn nè: *"${query}"* ( ˶ᵔ ᵕ ᵔ˶ )!\n\n` +
-      `Trạm quan trắc **${context.deviceId}** hiện đang ghi nhận:\n` +
-      `- 🌡️ Nhiệt độ: **${context.currentTemp !== null ? `${context.currentTemp.toFixed(1)}°C` : 'Chờ dữ liệu'}**\n` +
-      `- 💧 Độ ẩm: **${context.currentHumid !== null ? `${context.currentHumid.toFixed(1)}%` : 'Chờ dữ liệu'}**\n` +
-      `- 🧭 Khí áp: **${context.currentPress !== null ? `${context.currentPress.toFixed(1)} hPa` : 'Chờ dữ liệu'}**\n` +
-      `- 🌧️ Lượng mưa hôm nay: **${context.todayRainMm.toFixed(2)} mm** (${context.totalTipsToday} nhịp gầu)\n\n` +
-      `Bạn có muốn Chiikawa giải thích thêm về cách tính toán khí tượng, hướng dẫn đấu nối chân cảm biến cho ESP32-S3 hay các topic MQTT không nè? ( ˶•̀֊•́˶ )`
+      `Waaah?! Chuyện đó đâu có liên quan gì tới trạm quan trắc RainSense đâu nè! (˶˃⤙˂˶)\n` +
+      `- Chiikawa AI chỉ phụ trách thời tiết, cảm biến BME280, gầu lật A3144 và ESP32-S3 thôi nha.\n` +
+      `- Các chủ đề nấu ăn, giải trí hay bài tập môn khác mình không thể giải đáp được đâu á.\n` +
+      `Hẹ hẹ, bạn quay lại hỏi mình về số liệu đo đạc hoặc phần cứng trạm RainSense nha ( ˶ᵔ ᵕ ᵔ˶ )!`
     );
   }
 }

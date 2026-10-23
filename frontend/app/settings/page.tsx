@@ -11,7 +11,14 @@ import {
   Trash2,
   CheckCircle2,
   AlertTriangle,
-  Cpu
+  Cpu,
+  Sparkles,
+  Key,
+  Bot,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  RefreshCw
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
@@ -19,6 +26,46 @@ import { ThemeToggle } from '@/components/ui/ThemeToggle';
 export default function SettingsPage() {
   const queryClient = useQueryClient();
   const [resetMessage, setResetMessage] = useState<string | null>(null);
+
+  // AI Configuration State
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [selectedModel, setSelectedModel] = useState('gemini-3.5-flash');
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [aiTestResult, setAiTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [aiSaveMessage, setAiSaveMessage] = useState<string | null>(null);
+
+  const { data: aiConfig, isLoading: isLoadingAiConfig } = useQuery({
+    queryKey: ['aiConfig'],
+    queryFn: async () => {
+      const res = await api.getAiConfig();
+      if (res.model) setSelectedModel(res.model);
+      return res;
+    }
+  });
+
+  const saveAiMutation = useMutation({
+    mutationFn: () => api.updateAiConfig(apiKeyInput.trim() || undefined, selectedModel),
+    onSuccess: () => {
+      setAiSaveMessage('Đã lưu cấu hình Google AI Studio thành công!');
+      queryClient.invalidateQueries({ queryKey: ['aiConfig'] });
+      setApiKeyInput('');
+      setAiTestResult(null);
+      setTimeout(() => setAiSaveMessage(null), 4000);
+    },
+    onError: (err: any) => {
+      setAiTestResult({ success: false, message: err.message || 'Lỗi khi lưu cấu hình AI' });
+    }
+  });
+
+  const testAiMutation = useMutation({
+    mutationFn: () => api.testAiKey(apiKeyInput.trim() || undefined, selectedModel),
+    onSuccess: (res: any) => {
+      setAiTestResult({ success: true, message: `Thành công (${res.model}): ${res.reply}` });
+    },
+    onError: (err: any) => {
+      setAiTestResult({ success: false, message: err.message || 'Kiểm tra API Key thất bại' });
+    }
+  });
 
   const { data: demoModeData } = useQuery({
     queryKey: ['demoMode'],
@@ -72,6 +119,169 @@ export default function SettingsPage() {
 
         {/* 3 Interactive Cards Selector */}
         <ThemeToggle variant="cards" />
+      </section>
+
+      {/* CẤU HÌNH TRỢ LÝ AI CHIIKAWA & GOOGLE AI STUDIO */}
+      <section className="bg-card border border-border rounded-2xl p-5 shadow-sm space-y-4 transition-colors">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-border pb-3 gap-2">
+          <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <Bot className="w-5 h-5 text-pink-500" />
+            <span>Trợ Lý AI Chiikawa & Google AI Studio (Gemini LLM)</span>
+          </h2>
+          <div className="flex items-center gap-2">
+            {aiConfig?.hasKey ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Google Gemini ({aiConfig.model})</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                <span>Chế độ: Động cơ Chuyên gia Nội bộ (Built-in)</span>
+              </span>
+            )}
+          </div>
+        </div>
+
+        <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+          Tích hợp <strong>Google AI Studio (Gemini 1.5 Flash / 2.0 Flash)</strong> giúp trợ lý AI Chiikawa suy luận sâu sắc, phân tích tương quan khí tượng thời gian thực từ phần cứng ESP32-S3, hỗ trợ gỡ lỗi và giải thích công thức đo mưa cực kỳ thông minh.
+        </p>
+
+        {/* Info card with link to get free key */}
+        <div className="p-3.5 rounded-xl bg-pink-500/5 dark:bg-pink-500/10 border border-pink-500/20 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <div className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+              <Key className="w-4 h-4 text-pink-500" />
+              <span>Chưa có API Key? Nhận miễn phí 100% từ Google</span>
+            </div>
+            <p className="text-slate-600 dark:text-slate-400">
+              Truy cập Google AI Studio để tạo khóa API miễn phí chỉ trong 30 giây (không yêu cầu thẻ tín dụng).
+            </p>
+          </div>
+          <a
+            href="https://aistudio.google.com/app/apikey"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-pink-500 hover:bg-pink-600 text-white font-medium text-xs transition-colors shrink-0 shadow-sm"
+          >
+            <span>Lấy API Key tại AI Studio</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        </div>
+
+        {/* Form fields */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          {/* API Key Input */}
+          <div className="md:col-span-2 space-y-1.5">
+            <label className="font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+              <span>Google Gemini API Key:</span>
+              {aiConfig?.hasKey && (
+                <span className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400 font-normal">
+                  Đã cấu hình: {aiConfig.keyMasked}
+                </span>
+              )}
+            </label>
+            <div className="relative flex items-center">
+              <input
+                type={showApiKey ? 'text' : 'password'}
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                placeholder={aiConfig?.hasKey ? 'Dán khóa mới để thay thế khóa hiện tại...' : 'Dán API Key (AIzaSy...)'}
+                className="w-full px-3.5 py-2.5 pr-20 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-pink-500/40 text-xs font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => setShowApiKey(!showApiKey)}
+                className="absolute right-2 px-2 py-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                title={showApiKey ? 'Ẩn' : 'Hiện'}
+              >
+                {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Model Selector */}
+          <div className="space-y-1.5">
+            <label className="font-semibold text-slate-700 dark:text-slate-300">
+              Mô hình (Gemini Model):
+            </label>
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-pink-500/40 text-xs"
+            >
+              <option value="gemini-3.5-flash">Gemini 3.5 Flash (Khuyên dùng - Nhanh & Ổn định)</option>
+              <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite (Phản hồi tức thì)</option>
+              <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite (Tiết kiệm ngạch)</option>
+              <option value="gemini-3.8-flash">Gemini 3.8 Flash (Thông minh cao cấp)</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Buttons */}
+        <div className="flex flex-wrap items-center gap-3 pt-2">
+          <button
+            type="button"
+            onClick={() => saveAiMutation.mutate()}
+            disabled={saveAiMutation.isPending || (!apiKeyInput.trim() && selectedModel === aiConfig?.model)}
+            className="px-4 py-2 rounded-xl bg-pink-500 hover:bg-pink-600 text-white font-semibold text-xs transition-all shadow-sm disabled:opacity-50 flex items-center gap-2"
+          >
+            {saveAiMutation.isPending && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+            <span>Lưu cấu hình AI Studio</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => testAiMutation.mutate()}
+            disabled={testAiMutation.isPending || (!apiKeyInput.trim() && !aiConfig?.hasKey)}
+            className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold text-xs transition-all border border-slate-200 dark:border-slate-700 disabled:opacity-50 flex items-center gap-2"
+          >
+            {testAiMutation.isPending && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+            <span>Kiểm tra kết nối (Test Key)</span>
+          </button>
+
+          {aiConfig?.hasKey && (
+            <button
+              type="button"
+              onClick={() => {
+                if (confirm('Bạn có muốn gỡ bỏ API Key này và chuyển về chế độ chuyên gia nội bộ?')) {
+                  api.updateAiConfig('', selectedModel).then(() => {
+                    queryClient.invalidateQueries({ queryKey: ['aiConfig'] });
+                    setApiKeyInput('');
+                    setAiSaveMessage('Đã gỡ API Key. Hệ thống chuyển về chế độ Built-in.');
+                  });
+                }
+              }}
+              className="text-xs text-rose-500 hover:text-rose-600 underline font-medium ml-auto"
+            >
+              Gỡ bỏ API Key
+            </button>
+          )}
+        </div>
+
+        {/* Messages */}
+        {aiSaveMessage && (
+          <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2 animate-in fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+            <span>{aiSaveMessage}</span>
+          </div>
+        )}
+
+        {aiTestResult && (
+          <div
+            className={`p-3 rounded-xl border text-xs flex items-center gap-2 animate-in fade-in ${
+              aiTestResult.success
+                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-800 dark:text-emerald-300'
+                : 'bg-rose-500/15 border-rose-500/30 text-rose-800 dark:text-rose-300'
+            }`}
+          >
+            {aiTestResult.success ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+            )}
+            <span>{aiTestResult.message}</span>
+          </div>
+        )}
       </section>
 
       {/* CẤU HÌNH PHẦN CỨNG ESP32-S3 */}

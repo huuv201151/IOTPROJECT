@@ -59,7 +59,9 @@ const EnvSchema = z.object({
   // Station Default Configuration
   DEFAULT_STATION_ID: z.string().default('RS-ESP32S3-01'),
   DEFAULT_CALIBRATION_MM_PER_TIP: z.string().default('0.25').transform((val) => parseFloat(val)),
-  DEFAULT_TIMEZONE: z.string().default('Asia/Ho_Chi_Minh')
+  DEFAULT_TIMEZONE: z.string().default('Asia/Ho_Chi_Minh'),
+  GEMINI_API_KEY: z.string().optional().default(''),
+  GEMINI_MODEL: z.string().optional().default('gemini-3.5-flash')
 });
 
 export const env = EnvSchema.parse(process.env);

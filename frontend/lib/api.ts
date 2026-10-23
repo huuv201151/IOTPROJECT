@@ -86,10 +86,22 @@ export const api = {
 
   // Chiikawa AI Assistant
   chatWithAi: (message: string, history: Array<{ role: 'user' | 'assistant'; content: string }> = [], deviceId?: string) =>
-    request<{ reply: string; context: any }>('/api/ai/chat', {
+    request<{ reply: string; context: any; provider?: string; model?: string }>('/api/ai/chat', {
       method: 'POST',
       body: JSON.stringify({ message, history, deviceId })
     }),
   getAiContext: (deviceId?: string) =>
-    request<any>(`/api/ai/context${deviceId ? `?deviceId=${deviceId}` : ''}`)
+    request<any>(`/api/ai/context${deviceId ? `?deviceId=${deviceId}` : ''}`),
+  getAiConfig: () =>
+    request<{ hasKey: boolean; model: string; keyMasked: string; provider: string }>('/api/ai/config'),
+  updateAiConfig: (apiKey?: string, model?: string) =>
+    request<{ hasKey: boolean; model: string; keyMasked: string; provider: string }>('/api/ai/config', {
+      method: 'POST',
+      body: JSON.stringify({ apiKey, model })
+    }),
+  testAiKey: (apiKey?: string, model?: string) =>
+    request<{ success: boolean; model: string; reply: string }>('/api/ai/test', {
+      method: 'POST',
+      body: JSON.stringify({ apiKey, model })
+    })
 };

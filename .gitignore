@@ -16,6 +16,8 @@ out/
 # Environment files
 .env
 .env*.local
+!*.env.example
+!**/.env.example
 !.env.example
 !.env.test
 

@@ -22,6 +22,8 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
+  provider?: string;
+  model?: string;
 }
 
 const DEFAULT_WELCOME_MESSAGE: Message = {
@@ -40,6 +42,67 @@ const SUGGESTED_PROMPTS = [
   '📶 Hướng dẫn xử lý khi trạm ngoại tuyến'
 ];
 
+function formatChatMessage(text: string, isUser = false) {
+  if (!text) return null;
+  // 1. Sanitize any residual LaTeX or raw math syntax
+  const clean = text
+    .replace(/\\text\{([^}]+)\}/g, '$1')
+    .replace(/\\times/g, '×')
+    .replace(/\\Delta\s*t/gi, 'Δt')
+    .replace(/\\Delta/gi, 'Δ')
+    .replace(/\\le/g, '≤')
+    .replace(/\\ge/g, '≥')
+    .replace(/\\pm/g, '±')
+    .replace(/\\degree/g, '°')
+    .replace(/\\cdot/g, '·')
+    .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '$1 / $2')
+    .replace(/\$([^\$]+)\$/g, '$1');
+
+  // 2. Parse inline bold (**bold**) and inline code (`code`) per line
+  const lines = clean.split('\n');
+  return lines.map((line, lineIdx) => {
+    if (line.trim() === '') {
+      return <div key={lineIdx} className="h-1.5" />;
+    }
+    const parts = line.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+    return (
+      <div key={lineIdx} className="min-h-[1.25rem] leading-relaxed">
+        {parts.map((part, partIdx) => {
+          if (part.startsWith('**') && part.endsWith('**')) {
+            return (
+              <strong
+                key={partIdx}
+                className={
+                  isUser
+                    ? 'font-bold text-white'
+                    : 'font-semibold text-slate-900 dark:text-slate-100'
+                }
+              >
+                {part.slice(2, -2)}
+              </strong>
+            );
+          }
+          if (part.startsWith('`') && part.endsWith('`')) {
+            return (
+              <code
+                key={partIdx}
+                className={
+                  isUser
+                    ? 'px-1.5 py-0.5 rounded bg-white/20 font-mono text-[11px] text-white'
+                    : 'px-1.5 py-0.5 rounded bg-slate-200/80 dark:bg-slate-700/60 font-mono text-[11px] text-pink-600 dark:text-pink-400'
+                }
+              >
+                {part.slice(1, -1)}
+              </code>
+            );
+          }
+          return <span key={partIdx}>{part}</span>;
+        })}
+      </div>
+    );
+  });
+}
+
 export function ChiikawaAiChat({ stationId = 'RS-ESP32S3-01' }: { stationId?: string }) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([DEFAULT_WELCOME_MESSAGE]);
@@ -57,6 +120,13 @@ export function ChiikawaAiChat({ stationId = 'RS-ESP32S3-01' }: { stationId?: st
     queryFn: () => api.getAiContext(stationId),
     refetchInterval: 15000,
     enabled: isOpen
+  });
+
+  // Fetch AI engine configuration (Gemini vs Built-in)
+  const { data: aiConfig } = useQuery({
+    queryKey: ['aiConfig'],
+    queryFn: () => api.getAiConfig(),
+    staleTime: 30000
   });
 
   // Auto-scroll to bottom of messages
@@ -101,7 +171,9 @@ export function ChiikawaAiChat({ stationId = 'RS-ESP32S3-01' }: { stationId?: st
         id: `bot-${Date.now()}`,
         role: 'assistant',
         content: res.reply,
-        timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+        timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+        provider: res.provider,
+        model: res.model
       };
 
       setMessages((prev) => [...prev, botMsg]);
@@ -167,6 +239,7 @@ export function ChiikawaAiChat({ stationId = 'RS-ESP32S3-01' }: { stationId?: st
               <ChiikawaIcon
                 size={48}
                 expression="happy"
+                withBadge={true}
                 className="group-hover:rotate-6 transition-transform"
               />
               {/* Pulsing ring around button */}
@@ -198,6 +271,7 @@ export function ChiikawaAiChat({ stationId = 'RS-ESP32S3-01' }: { stationId?: st
                 <ChiikawaIcon
                   size={42}
                   expression={isTyping ? 'thinking' : 'happy'}
+                  withBadge={true}
                   className="rounded-full ring-2 ring-pink-300 dark:ring-pink-500/40 p-0.5 bg-white dark:bg-slate-800"
                 />
               </div>
@@ -207,13 +281,20 @@ export function ChiikawaAiChat({ stationId = 'RS-ESP32S3-01' }: { stationId?: st
                     <span>Chiikawa AI</span>
                     <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
                   </h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold font-mono bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>Trực tuyến</span>
-                  </span>
+                  {aiConfig?.hasKey ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold font-mono bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 flex items-center gap-1 shadow-xs">
+                      <Sparkles className="w-2.5 h-2.5 text-pink-500" />
+                      <span>Gemini AI</span>
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold font-mono bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>Trực tuyến</span>
+                    </span>
+                  )}
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Trợ lý Khí tượng & Phần cứng ESP32-S3
+                  {aiConfig?.hasKey ? `Google Gemini (${aiConfig.model})` : 'Trợ lý Khí tượng & Phần cứng ESP32-S3'}
                 </p>
               </div>
             </div>
@@ -285,17 +366,29 @@ export function ChiikawaAiChat({ stationId = 'RS-ESP32S3-01' }: { stationId?: st
                       : 'bg-slate-100 dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 border border-slate-200/60 dark:border-slate-700/50 rounded-bl-xs'
                   }`}
                 >
-                  <div className="whitespace-pre-line prose-xs dark:prose-invert">
-                    {msg.content}
+                  <div className="space-y-0.5">
+                    {formatChatMessage(msg.content, msg.role === 'user')}
                   </div>
                   <div
-                    className={`text-[9px] mt-1 font-mono text-right ${
+                    className={`text-[9px] mt-1.5 font-mono flex items-center justify-between gap-3 ${
                       msg.role === 'user'
-                        ? 'text-cyan-100/75'
+                        ? 'text-cyan-100/75 justify-end'
                         : 'text-slate-400 dark:text-slate-500'
                     }`}
                   >
-                    {msg.timestamp}
+                    {msg.role === 'assistant' && (
+                      <span className="flex items-center gap-1 text-[9px] font-sans">
+                        {msg.provider === 'gemini' ? (
+                          <span className="text-pink-600 dark:text-pink-400 font-medium flex items-center gap-0.5">
+                            <Sparkles className="w-2.5 h-2.5" />
+                            <span>Gemini</span>
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">RainSense Engine</span>
+                        )}
+                      </span>
+                    )}
+                    <span>{msg.timestamp}</span>
                   </div>
                 </div>
 
