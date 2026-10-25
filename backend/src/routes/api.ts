@@ -60,6 +60,9 @@ apiRouter.get('/demo/mode', demoController.getMode);
 apiRouter.post('/demo/toggle', demoController.toggleMode);
 apiRouter.post('/demo/simulate-tip', demoController.simulateTip);
 
-// Chiikawa AI Assistant
+// RainSense AI Assistant
 apiRouter.post('/ai/chat', aiController.chat);
 apiRouter.get('/ai/context', aiController.getContext);
+apiRouter.get('/ai/config', aiController.getConfig);
+apiRouter.post('/ai/config', aiController.updateConfig);
+apiRouter.post('/ai/test', aiController.testKey);

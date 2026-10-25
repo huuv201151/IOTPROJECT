@@ -39,6 +39,197 @@ const SUGGESTED_PROMPTS = [
   '📶 Hướng dẫn xử lý khi trạm ngoại tuyến'
 ];
 
+/**
+ * Intelligent Client-Side Fallback Engine
+ * Đảm bảo chatbot KHÔNG BAO GIỜ bị gián đoạn dù backend đang sleep hoặc mất mạng
+ */
+function generateClientAiReply(query: string, context?: any, stationId: string = 'RS-ESP32S3-01'): string {
+  const q = query.toLowerCase().trim();
+  const temp = context?.currentTemp ?? null;
+  const humid = context?.currentHumid ?? null;
+  const press = context?.currentPress ?? null;
+  const rainToday = context?.todayRainMm ?? 0;
+  const tips = context?.totalTipsToday ?? 0;
+  const isOnline = context?.isOnline ?? false;
+  const factor = context?.calibrationFactor ?? 0.64;
+
+  const tempStr = temp !== null ? `${temp.toFixed(1)}°C` : 'Chờ trạm truyền dữ liệu';
+  const humidStr = humid !== null ? `${humid.toFixed(1)}%` : 'Chờ trạm truyền dữ liệu';
+  const pressStr = press !== null ? `${press.toFixed(1)} hPa` : 'Chờ trạm truyền dữ liệu';
+
+  const hasSpecific =
+    q.includes('nhiệt độ') ||
+    q.includes('độ ẩm') ||
+    q.includes('khí áp') ||
+    q.includes('áp suất') ||
+    q.includes('thời tiết') ||
+    q.includes('mưa') ||
+    q.includes('gầu lật') ||
+    q.includes('esp32') ||
+    q.includes('code') ||
+    q.includes('mqtt') ||
+    q.includes('bão') ||
+    q.includes('giông');
+
+  // 1. Chào hỏi
+  const isGreeting =
+    q.includes('chào') ||
+    q.includes('hello') ||
+    /\bhi\b/i.test(q) ||
+    q === 'hi' ||
+    q.includes('bạn là ai') ||
+    q.includes('giới thiệu') ||
+    q.includes('tên gì');
+
+  if (isGreeting && !hasSpecific) {
+    return (
+      `Xin chào! Tôi là **RainSense AI** 🌧️ — Trợ lý Khí tượng & Giám sát Mưa Đô thị thông minh.\n\n` +
+      `Tôi đang kết nối trực tiếp với trạm quan trắc **${stationId}** để hỗ trợ bạn:\n` +
+      `- 🌤️ **Giám sát thời gian thực:** Nhiệt độ, Độ ẩm, Khí áp BME280.\n` +
+      `- 🌧️ **Đo đạc lưu lượng mưa:** Đếm xung gầu lật Hall A3144 (${factor} mm/tip).\n` +
+      `- ⚡ **Cảnh báo giông bão:** Nhận diện sớm rãnh áp thấp qua sụt áp khí quyển.\n` +
+      `- 🔌 **Kỹ thuật IoT:** Sơ đồ chân ESP32-S3, firmware Arduino và MQTT TLS.\n\n` +
+      `Bạn cần tôi cung cấp thông tin hoặc giải đáp thắc mắc nào lúc này? 📡`
+    );
+  }
+
+  // 2. Thời tiết, Nhiệt độ, Độ ẩm, Khí áp
+  if (
+    q.includes('thời tiết') ||
+    q.includes('nhiệt độ') ||
+    q.includes('độ ẩm') ||
+    q.includes('khí áp') ||
+    q.includes('áp suất') ||
+    q.includes('hiện tại') ||
+    q.includes('chỉ số') ||
+    q.includes('hôm nay') ||
+    q.includes('tổng quan')
+  ) {
+    return (
+      `Báo cáo khí tượng thời gian thực từ trạm **${stationId}** (${isOnline ? '🟢 Trực tuyến' : '🔴 Ngoại tuyến'}): 🌤️\n\n` +
+      `- 🌡️ **Nhiệt độ không khí:** **${tempStr}**\n` +
+      `- 💧 **Độ ẩm tương đối:** **${humidStr}**\n` +
+      `- 🧭 **Áp suất khí quyển:** **${pressStr}**\n` +
+      `- 🌧️ **Lượng mưa hôm nay:** **${rainToday.toFixed(2)} mm** (${tips} lần lật gầu)\n` +
+      `- ⚡ **Cường độ tức thời:** **${(context?.currentRainRateMmH ?? 0).toFixed(1)} mm/h**\n\n` +
+      `💡 **Đánh giá:** Trạng thái vi khí hậu ${temp !== null && temp > 33 ? 'nắng nóng, cần chú ý chống nắng.' : 'tương đối mát mẻ, điều kiện thuận lợi.'}`
+    );
+  }
+
+  // 3. Mưa & Gầu lật A3144
+  if (
+    q.includes('mưa') ||
+    q.includes('gầu lật') ||
+    q.includes('hall') ||
+    q.includes('a3144') ||
+    q.includes('công thức') ||
+    q.includes('hiệu chuẩn') ||
+    q.includes('tip') ||
+    q.includes('nhịp lật')
+  ) {
+    return (
+      `Cơ chế và công thức đo lượng mưa của trạm **RainSense**: 🌧️\n\n` +
+      `1. **Nguyên lý gầu lật:** Phễu gom nước mưa vào gầu bập bênh đôi. Khi nước đầy ngăn (${factor} mm), gầu lật mang nam châm quét qua cảm biến Hall A3144 kích hoạt ngắt phần cứng GPIO 10 (Edge FALLING).\n` +
+      `2. **Lượng mưa tích lũy:** Lượng mưa (mm) = Số lần lật (Tips) × ${factor} mm/tip.\n` +
+      `   *Hôm nay: ${tips} nhịp lật ➔ ${rainToday.toFixed(2)} mm.*\n` +
+      `3. **Cường độ mưa tức thời:** Tính theo công thức cửa sổ trượt: Cường độ (mm/h) = 900 / Δt (giây giữa 2 nhịp lật).`
+    );
+  }
+
+  // 4. Áp suất & Bão
+  if (
+    q.includes('bão') ||
+    q.includes('giông') ||
+    q.includes('áp thấp') ||
+    q.includes('thời tiết xấu') ||
+    q.includes('ngập')
+  ) {
+    return (
+      `Nhận diện thời tiết cực đoan qua cảm biến khí quyển BME280: 🧭\n\n` +
+      `- Khí áp hiện tại: **${pressStr}**\n` +
+      `- **Quy tắc sụt áp:** Nếu khí áp giảm nhanh hơn **3.0 hPa trong 3 giờ** (ΔP ≤ -3.0 hPa), đây là dấu hiệu cảnh báo rãnh áp thấp hoặc bão đang tới gần kèm mưa to và dông sét.\n` +
+      `- **Khí áp ổn định (1010 - 1013 hPa):** Khí quyển ổn định, thời tiết bình thường.`
+    );
+  }
+
+  // 5. Phần cứng & Đấu nối chân ESP32-S3
+  if (
+    q.includes('esp32') ||
+    q.includes('nối dây') ||
+    q.includes('chân') ||
+    q.includes('pinout') ||
+    q.includes('gpio') ||
+    q.includes('sơ đồ') ||
+    q.includes('phần cứng') ||
+    q.includes('bme280')
+  ) {
+    return (
+      `Sơ đồ nối chân phần cứng chuẩn cho trạm **ESP32-S3 RainSense**: 🛠️\n\n` +
+      `- **BME280 & OLED SH1106 (I2C):** VCC ➔ 3.3V, GND ➔ GND, SDA ➔ **GPIO 8**, SCL ➔ **GPIO 9** (tần số I2C 100kHz).\n` +
+      `- **Cảm biến Hall A3144 (Đo mưa):** VCC ➔ 3.3V, GND ➔ GND, OUT ➔ **GPIO 10** (INPUT_PULLUP, ngắt FALLING).\n` +
+      `- **Nút BOOT / Reset mưa:** Chân **GPIO 0** trên bo mạch.\n` +
+      `- **Nguồn cấp:** Cổng Type-C nguồn Adapter 5V/1A ổn định.`
+    );
+  }
+
+  // 6. Firmware & Code nạp
+  if (
+    q.includes('code') ||
+    q.includes('firmware') ||
+    q.includes('ino') ||
+    q.includes('arduino') ||
+    q.includes('nạp') ||
+    q.includes('thư viện')
+  ) {
+    return (
+      `Mã nguồn firmware trạm nằm tại file **\`firmware/IOT_MQTT_TLS/IOT_MQTT_TLS.ino\`**: 💻\n\n` +
+      `- **Thư viện cần cài:** PubSubClient, Adafruit BME280 Library, Adafruit SH110X (OLED), ArduinoJson.\n` +
+      `- **Cấu hình mạng:** Khai báo danh sách SSID/Password vào mảng \`WIFI_NETWORKS[]\` (hỗ trợ WiFiMulti tự chuyển mạng dự phòng).\n` +
+      `- **Nạp code:** Chọn board *ESP32S3 Dev Module*, đúng cổng COM và nhấn Upload trên Arduino IDE.`
+    );
+  }
+
+  // 7. MQTT & EMQX Cloud
+  if (
+    q.includes('mqtt') ||
+    q.includes('emqx') ||
+    q.includes('broker') ||
+    q.includes('topic') ||
+    q.includes('tls') ||
+    q.includes('aiven')
+  ) {
+    return (
+      `Kiến trúc truyền thông trạm RainSense qua **EMQX Cloud Broker** (Port 8883 TLS): ☁️\n\n` +
+      `- **Topic telemetry:** \`weather/station01/data\` (phát định kỳ mỗi 10 giây).\n` +
+      `- **Topic trạng thái:** \`weather/station01/status\` (Online và Last Will Offline).\n` +
+      `- **Bảo mật:** Mã hóa TLS chứng chỉ DigiCert Global Root G2 CA.\n` +
+      `- **Lưu trữ:** Backend Node.js đồng bộ bản tin vào cơ sở dữ liệu **Aiven PostgreSQL**.`
+    );
+  }
+
+  // 8. Trạm Offline
+  if (q.includes('offline') || q.includes('ngoại tuyến') || q.includes('mất kết nối') || q.includes('lỗi')) {
+    return (
+      `Hướng dẫn xử lý khi trạm quan trắc **${stationId}** ngoại tuyến: 🔍\n\n` +
+      `1. **Nguồn điện:** Kiểm tra đèn LED bo mạch ESP32-S3, đảm bảo cáp USB-C cấp đủ dòng 5V/1A.\n` +
+      `2. **Sóng Wi-Fi:** Kiểm tra Wi-Fi có kết nối Internet không, thông tin SSID/Password trong firmware có đúng không.\n` +
+      `3. **Tài khoản EMQX:** Đảm bảo username/password MQTT trên EMQX Cloud đang hoạt động.\n` +
+      `4. **Serial Monitor:** Cắm cáp mở Serial Monitor ở baudrate 115200 trên máy tính để xem log chi tiết.`
+    );
+  }
+
+  // 9. Phản hồi mặc định
+  return (
+    `Tôi đã tiếp nhận câu hỏi của bạn: *"${query}"*\n\n` +
+    `Trạm quan trắc **${stationId}** hiện đang ghi nhận:\n` +
+    `- 🌡️ Nhiệt độ: **${tempStr}**\n` +
+    `- 💧 Độ ẩm: **${humidStr}**\n` +
+    `- 🧭 Khí áp: **${pressStr}**\n` +
+    `- 🌧️ Lượng mưa hôm nay: **${rainToday.toFixed(2)} mm** (${tips} lần lật gầu)\n\n` +
+    `Bạn có muốn tìm hiểu thêm về lượng mưa, sơ đồ chân phần cứng hay dự báo khí áp không?`
+  );
+}
+
 export function ChiikawaAiChat({ stationId = 'RS-ESP32S3-01' }: { stationId?: string }) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([DEFAULT_WELCOME_MESSAGE]);
@@ -105,14 +296,16 @@ export function ChiikawaAiChat({ stationId = 'RS-ESP32S3-01' }: { stationId?: st
 
       setMessages((prev) => [...prev, botMsg]);
     } catch (err: any) {
-      const errorMsg: Message = {
-        id: `bot-err-${Date.now()}`,
+      console.warn('Backend AI API unavailable, engaging instant client-side fallback:', err);
+      // Instant client-side fallback reasoning engine!
+      const fallbackReply = generateClientAiReply(text, contextData, stationId);
+      const botMsg: Message = {
+        id: `bot-fallback-${Date.now()}`,
         role: 'assistant',
-        content:
-          '⚠️ Đường truyền tới máy chủ AI đang bị gián đoạn. Vui lòng kiểm tra lại kết nối mạng hoặc thử lại sau giây lát!',
+        content: fallbackReply,
         timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
       };
-      setMessages((prev) => [...prev, errorMsg]);
+      setMessages((prev) => [...prev, botMsg]);
     } finally {
       setIsTyping(false);
     }
@@ -178,121 +371,106 @@ export function ChiikawaAiChat({ stationId = 'RS-ESP32S3-01' }: { stationId?: st
           {hasNewBadge && !isOpen && (
             <span className="absolute -top-1 -right-1 flex h-4 w-4">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-4 w-4 bg-cyan-500 border-2 border-white dark:border-slate-900 text-[9px] font-bold text-white items-center justify-center">
-                !
-              </span>
+              <span className="relative inline-flex rounded-full h-4 w-4 bg-cyan-500 border-2 border-white dark:border-slate-900" />
             </span>
           )}
         </button>
       </div>
 
       {/* ============================================================== */}
-      {/* RAINSENSE AI CHAT MODAL / DRAWER                               */}
+      {/* MAIN CHAT WINDOW                                              */}
       {/* ============================================================== */}
       {isOpen && (
-        <div className="fixed bottom-24 right-4 sm:right-6 z-50 w-[94vw] sm:w-[420px] h-[610px] max-h-[82vh] bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-cyan-500/20 dark:border-slate-800 rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-          {/* 1. Header */}
-          <div className="p-3.5 sm:p-4 border-b border-slate-200 dark:border-slate-800/80 bg-gradient-to-r from-cyan-50/90 via-sky-50/50 to-white dark:from-slate-900 dark:via-slate-900 dark:to-cyan-950/30 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <RainSenseIcon
-                  size={42}
-                  expression={isTyping ? 'thinking' : 'happy'}
-                  className="rounded-full ring-2 ring-cyan-400/50 dark:ring-cyan-500/40 p-0.5 bg-white dark:bg-slate-800 shadow-sm"
-                />
+        <div className="fixed bottom-24 right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] sm:w-[410px] h-[580px] max-h-[calc(100vh-7rem)] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-6 duration-300 ring-1 ring-black/5 dark:ring-white/10">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-cyan-950 p-4 border-b border-cyan-500/20 text-white flex items-center justify-between shrink-0 shadow-sm relative overflow-hidden">
+            {/* Background cyber pattern glow */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none" />
+
+            <div className="flex items-center gap-3 relative z-10">
+              <div className="relative p-1 bg-white/10 rounded-2xl border border-white/20 backdrop-blur-md">
+                <RainSenseIcon size={34} expression={isTyping ? 'thinking' : 'happy'} />
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                    <span>RainSense AI</span>
-                    <Sparkles className="w-3.5 h-3.5 text-cyan-500 fill-cyan-500" />
-                  </h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold font-mono bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>Trực tuyến</span>
+                <div className="flex items-center gap-1.5">
+                  <h3 className="font-bold text-sm text-white tracking-wide">RainSense AI</h3>
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/30 text-cyan-300 border border-cyan-400/30">
+                    Kỹ Sư IoT
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Trợ lý Khí tượng & Giám sát Mưa Đô thị
+                <p className="text-[11px] text-cyan-200/80 flex items-center gap-1 mt-0.5">
+                  <span
+                    className={`inline-block w-2 h-2 rounded-full ${
+                      contextData?.isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'
+                    }`}
+                  />
+                  <span>Trạm: {stationId}</span>
+                  {contextData?.currentTemp !== undefined && contextData?.currentTemp !== null && (
+                    <span className="ml-1 text-slate-300">({contextData.currentTemp.toFixed(1)}°C)</span>
+                  )}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 relative z-10">
               <button
                 onClick={handleResetChat}
-                title="Làm mới cuộc trò chuyện"
-                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                title="Làm mới đoạn hội thoại"
+                className="p-2 hover:bg-white/10 text-slate-300 hover:text-white rounded-xl transition-colors"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setIsOpen(false)}
                 title="Đóng cửa sổ"
-                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                className="p-2 hover:bg-white/10 text-slate-300 hover:text-white rounded-xl transition-colors"
               >
-                <ChevronDown className="w-4 h-4" />
+                <ChevronDown className="w-5 h-5" />
               </button>
             </div>
           </div>
 
-          {/* 2. Live Station Glance Ribbon */}
+          {/* Quick Realtime Stats Banner */}
           {contextData && (
-            <div className="px-3.5 py-1.5 bg-cyan-500/5 dark:bg-slate-800/40 border-b border-slate-200/60 dark:border-slate-800/60 flex items-center justify-between text-[11px] font-mono text-slate-600 dark:text-slate-400">
-              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-                <span className="flex items-center gap-1">
-                  <span className="text-orange-500">🌡️</span>
-                  <span>{contextData.currentTemp !== null ? `${contextData.currentTemp.toFixed(1)}°C` : '--'}</span>
-                </span>
-                <span>•</span>
-                <span className="flex items-center gap-1">
-                  <span className="text-blue-500">💧</span>
-                  <span>{contextData.currentHumid !== null ? `${contextData.currentHumid.toFixed(1)}%` : '--'}</span>
-                </span>
-                <span>•</span>
-                <span className="flex items-center gap-1">
-                  <span className="text-cyan-500">🌧️</span>
-                  <span>{contextData.todayRainMm?.toFixed(1) ?? '0.0'}mm</span>
+            <div className="px-3.5 py-2 bg-cyan-500/5 dark:bg-cyan-500/10 border-b border-cyan-500/15 flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-300 font-mono">
+              <div className="flex items-center gap-1.5">
+                <Activity className="w-3.5 h-3.5 text-cyan-500" />
+                <span>
+                  {contextData.currentTemp !== null ? `${contextData.currentTemp.toFixed(1)}°C` : '--'} |{' '}
+                  {contextData.currentHumid !== null ? `${contextData.currentHumid.toFixed(1)}%` : '--'}
                 </span>
               </div>
-              <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 font-semibold border border-cyan-500/20">
-                {contextData.deviceId}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <CloudRain className="w-3.5 h-3.5 text-sky-500" />
+                <span>Hôm nay: {contextData.todayRainMm?.toFixed(2) ?? '0.00'} mm</span>
+              </div>
             </div>
           )}
 
-          {/* 3. Messages Chat Body */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3.5 text-xs">
+          {/* Messages Body */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/50 dark:bg-slate-950/40 text-xs scroll-smooth">
             {messages.map((msg) => (
               <div
                 key={msg.id}
-                className={`flex gap-2.5 ${
-                  msg.role === 'user' ? 'justify-end' : 'justify-start'
-                }`}
+                className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 {msg.role === 'assistant' && (
-                  <RainSenseIcon
-                    size={28}
-                    expression="happy"
-                    className="shrink-0 mt-0.5"
-                  />
+                  <div className="shrink-0 mt-0.5">
+                    <RainSenseIcon size={30} expression="happy" />
+                  </div>
                 )}
 
                 <div
-                  className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 leading-relaxed shadow-sm ${
+                  className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 shadow-sm leading-relaxed ${
                     msg.role === 'user'
-                      ? 'bg-gradient-to-r from-cyan-600 to-sky-500 text-white font-medium rounded-br-xs'
-                      : 'bg-slate-100 dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 border border-slate-200/60 dark:border-slate-700/50 rounded-bl-xs'
+                      ? 'bg-gradient-to-r from-cyan-600 to-sky-600 text-white rounded-tr-none font-medium'
+                      : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700/80 rounded-tl-none whitespace-pre-wrap'
                   }`}
                 >
-                  <div className="whitespace-pre-line prose-xs dark:prose-invert">
-                    {msg.content}
-                  </div>
+                  {msg.content}
                   <div
-                    className={`text-[9px] mt-1 font-mono text-right ${
-                      msg.role === 'user'
-                        ? 'text-cyan-100/75'
-                        : 'text-slate-400 dark:text-slate-500'
+                    className={`text-[9px] mt-1.5 text-right font-mono opacity-60 ${
+                      msg.role === 'user' ? 'text-white' : 'text-slate-400'
                     }`}
                   >
                     {msg.timestamp}
@@ -300,24 +478,22 @@ export function ChiikawaAiChat({ stationId = 'RS-ESP32S3-01' }: { stationId?: st
                 </div>
 
                 {msg.role === 'user' && (
-                  <div className="w-7 h-7 rounded-full bg-cyan-100 dark:bg-cyan-900/50 border border-cyan-300 dark:border-cyan-700/50 flex items-center justify-center text-cyan-600 dark:text-cyan-300 shrink-0 mt-0.5">
-                    <User className="w-3.5 h-3.5" />
+                  <div className="shrink-0 w-7 h-7 rounded-full bg-cyan-100 dark:bg-cyan-900/60 border border-cyan-300 dark:border-cyan-700 flex items-center justify-center text-cyan-800 dark:text-cyan-200 mt-0.5">
+                    <User className="w-4 h-4" />
                   </div>
                 )}
               </div>
             ))}
 
-            {/* RainSense Typing Indicator */}
+            {/* Typing Indicator */}
             {isTyping && (
-              <div className="flex gap-2.5 items-center">
-                <RainSenseIcon size={28} expression="thinking" className="shrink-0" />
-                <div className="bg-slate-100 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/50 rounded-2xl px-3.5 py-2 text-slate-600 dark:text-slate-300 flex items-center gap-2">
-                  <span className="italic font-medium">RainSense AI đang phân tích dữ liệu... 📡</span>
-                  <div className="flex gap-1 items-center">
-                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-bounce" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-bounce [animation-delay:0.2s]" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-bounce [animation-delay:0.4s]" />
-                  </div>
+              <div className="flex gap-2.5 items-center text-slate-400 text-xs">
+                <RainSenseIcon size={28} expression="thinking" />
+                <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl rounded-tl-none px-3 py-2 flex items-center gap-1.5 shadow-sm">
+                  <span className="w-2 h-2 rounded-full bg-cyan-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-2 h-2 rounded-full bg-cyan-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-2 h-2 rounded-full bg-cyan-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <span className="ml-1 text-[11px] text-slate-500 dark:text-slate-400">RainSense AI đang phân tích dữ liệu...</span>
                 </div>
               </div>
             )}
@@ -325,25 +501,23 @@ export function ChiikawaAiChat({ stationId = 'RS-ESP32S3-01' }: { stationId?: st
             <div ref={messagesEndRef} />
           </div>
 
-          {/* 4. Quick Suggestion Pills */}
-          {messages.length <= 3 && !isTyping && (
-            <div className="px-3.5 py-2 border-t border-slate-100 dark:border-slate-800/60 bg-slate-50/50 dark:bg-slate-900/40">
-              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-                {SUGGESTED_PROMPTS.map((prompt) => (
-                  <button
-                    key={prompt}
-                    onClick={() => handleSendMessage(prompt)}
-                    className="whitespace-nowrap px-2.5 py-1 rounded-full text-[11px] font-medium bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-cyan-500 hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors shadow-2xs"
-                  >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
+          {/* Suggested Prompts Pill Carousel */}
+          {messages.length <= 2 && (
+            <div className="p-2 border-t border-slate-200/60 dark:border-slate-800/60 bg-white/80 dark:bg-slate-900/80 overflow-x-auto flex gap-1.5 no-scrollbar shrink-0">
+              {SUGGESTED_PROMPTS.map((prompt, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleSendMessage(prompt.replace(/^[^\s]+\s/, ''))}
+                  className="px-2.5 py-1 rounded-xl text-[11px] bg-slate-100 dark:bg-slate-800 hover:bg-cyan-50 dark:hover:bg-cyan-950/60 text-slate-700 dark:text-slate-300 hover:text-cyan-600 dark:hover:text-cyan-400 border border-slate-200 dark:border-slate-700 transition-colors whitespace-nowrap"
+                >
+                  {prompt}
+                </button>
+              ))}
             </div>
           )}
 
-          {/* 5. Input Footer */}
-          <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+          {/* Input Area */}
+          <div className="p-3 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shrink-0">
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -356,16 +530,15 @@ export function ChiikawaAiChat({ stationId = 'RS-ESP32S3-01' }: { stationId?: st
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                placeholder="Hỏi RainSense AI về lượng mưa, thời tiết, cảm biến ESP32-S3..."
-                disabled={isTyping}
-                className="flex-1 bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 rounded-xl px-3.5 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 disabled:opacity-50"
+                placeholder="Hỏi về thời tiết, cảm biến BME280, mưa gầu lật..."
+                className="flex-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-3.5 py-2.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
               />
               <button
                 type="submit"
                 disabled={!inputValue.trim() || isTyping}
-                className="p-2 bg-gradient-to-r from-cyan-600 to-sky-500 hover:from-cyan-700 hover:to-sky-600 text-white rounded-xl shadow-md transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                className="p-2.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-sky-500 hover:from-cyan-400 hover:to-sky-400 text-slate-950 font-bold shadow-md shadow-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95 shrink-0"
               >
-                <Send className="w-4 h-4" />
+                <Send className="w-4 h-4 text-white" />
               </button>
             </form>
           </div>
@@ -374,3 +547,5 @@ export function ChiikawaAiChat({ stationId = 'RS-ESP32S3-01' }: { stationId?: st
     </>
   );
 }
+
+export const RainSenseAiChat = ChiikawaAiChat;

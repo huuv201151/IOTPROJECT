@@ -1,22 +1,35 @@
-const rawBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const DEFAULT_REMOTE_API = 'https://rainsense-backend.onrender.com';
+const rawBase =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
+    ? DEFAULT_REMOTE_API
+    : 'http://localhost:5000');
 const API_BASE = rawBase.replace(/\/+$/, '');
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-    cache: 'no-store'
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-  const json = await res.json();
-  if (!res.ok || json.success === false) {
-    throw new Error(json.error || `Lỗi khi gọi API (${res.status})`);
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: options.signal || controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      cache: 'no-store'
+    });
+
+    const json = await res.json();
+    if (!res.ok || json.success === false) {
+      throw new Error(json.error || `Lỗi khi gọi API (${res.status})`);
+    }
+    return json.data;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  return json.data;
 }
 
 export const api = {
@@ -85,12 +98,24 @@ export const api = {
     return `${API_BASE}/api/export?${q}`;
   },
 
-  // Chiikawa AI Assistant
+  // RainSense AI Assistant
   chatWithAi: (message: string, history: Array<{ role: 'user' | 'assistant'; content: string }> = [], deviceId?: string) =>
-    request<{ reply: string; context: any }>('/api/ai/chat', {
+    request<{ reply: string; context: any; provider?: string; model?: string }>('/api/ai/chat', {
       method: 'POST',
       body: JSON.stringify({ message, history, deviceId })
     }),
   getAiContext: (deviceId?: string) =>
-    request<any>(`/api/ai/context${deviceId ? `?deviceId=${deviceId}` : ''}`)
+    request<any>(`/api/ai/context${deviceId ? `?deviceId=${deviceId}` : ''}`),
+  getAiConfig: () =>
+    request<{ hasKey: boolean; model: string; keyMasked: string; provider: string }>('/api/ai/config'),
+  updateAiConfig: (apiKey?: string, model?: string) =>
+    request<{ hasKey: boolean; model: string; keyMasked: string; provider: string }>('/api/ai/config', {
+      method: 'POST',
+      body: JSON.stringify({ apiKey, model })
+    }),
+  testAiKey: (apiKey?: string, model?: string) =>
+    request<{ success: boolean; model: string; reply: string }>('/api/ai/test', {
+      method: 'POST',
+      body: JSON.stringify({ apiKey, model })
+    })
 };
