@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -26,7 +26,7 @@ import {
 import { api } from '@/lib/api';
 import { getSocket } from '@/lib/socket';
 import { useDemo } from '@/context/demo-context';
-import { DEMO_SCENARIOS } from '@/lib/demo-scenarios';
+import { DEMO_SCENARIOS, getDemoRainMonitorSnapshot } from '@/lib/demo-scenarios';
 import { formatRainEvidence, rainObservationLabel, rainQualityLabels } from '@/shared/rain-monitor';
 import type { AlertRecord } from '@/shared/types/alert';
 
@@ -39,11 +39,22 @@ export function RainMonitorPanel({ deviceId, dashboardDemo }: { deviceId: string
   const scenario = demo ? demoScenario : undefined;
   const queryClient = useQueryClient();
 
-  const { data, isError, isLoading } = useQuery({
+  // Instant client-side simulation for 0ms reactivity across all 4 demo scenarios
+  const localDemoSnapshot = useMemo(() => {
+    if (demo) {
+      return getDemoRainMonitorSnapshot(deviceId, (scenario as any) || 'high');
+    }
+    return null;
+  }, [demo, deviceId, scenario]);
+
+  const { data: serverData, isError, isLoading } = useQuery({
     queryKey: ['rain-monitor', deviceId, demo, scenario],
     queryFn: () => api.getRainMonitor(deviceId, demo, scenario),
-    refetchInterval: demo ? false : 30000
+    refetchInterval: demo ? false : 30000,
+    enabled: !demo
   });
+
+  const data = demo ? localDemoSnapshot : serverData;
 
   useEffect(() => {
     if (demo) return;
@@ -69,7 +80,12 @@ export function RainMonitorPanel({ deviceId, dashboardDemo }: { deviceId: string
 
   // Determine current active risk tier (1: Safe, 2: Moderate, 3: Warning, 4: Critical)
   let currentTier: 1 | 2 | 3 | 4 = 1;
-  if (evidence?.severity === 'CRITICAL') {
+  if (demo && demoScenario) {
+    if (demoScenario === 'critical') currentTier = 4;
+    else if (demoScenario === 'high') currentTier = 3;
+    else if (demoScenario === 'moderate') currentTier = 2;
+    else currentTier = 1;
+  } else if (evidence?.severity === 'CRITICAL') {
     currentTier = 4;
   } else if (evidence?.severity === 'WARNING' || data?.observation.status === 'heavy') {
     currentTier = 3;
