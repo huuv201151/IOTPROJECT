@@ -82,10 +82,11 @@ export const rainObservationLabels: Record<RainMonitorSnapshot['observation']['s
 };
 
 export function rainObservationLabel(observation: RainMonitorSnapshot['observation']): string {
-  if (observation.status === 'rain' && observation.rulesConfigured) return 'Có mưa dưới ngưỡng cảnh báo';
+  if (observation.status === 'rain' && observation.rulesConfigured) return 'Có mưa, chưa vượt ngưỡng cảnh báo';
   return rainObservationLabels[observation.status];
 }
 
 export function formatRainEvidence(evidence: RainAlertEvidence): string {
-  return `${evidence.source === 'simulation' ? 'Mô phỏng' : 'Mưa thực đo'} · ${evidence.value} ${evidence.unit} trong cửa sổ ${evidence.windowMinutes} phút, vượt ngưỡng ${evidence.threshold} ${evidence.unit}.`;
+  const number = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 });
+  return `${evidence.source === 'simulation' ? 'Mô phỏng' : 'Mưa thực đo'} · ${number.format(evidence.value)} ${evidence.unit} trong cửa sổ ${evidence.windowMinutes} phút, vượt ngưỡng ${number.format(evidence.threshold)} ${evidence.unit}.`;
 }

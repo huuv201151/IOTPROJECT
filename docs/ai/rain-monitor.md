@@ -17,4 +17,4 @@ npm run ai:train:rain --workspace=backend -- --export https://rainsense-backend-
 npm run ai:train:rain --workspace=backend -- observations.json rain-evaluation.json
 ```
 
-Script so sánh Ridge dùng lượng mưa, Ridge dùng thêm khí áp và ước tính cường độ duy trì. Cả ba dùng cùng các tập thời gian, giữ mỗi đợt mưa trong một tập và chừa khoảng cách giữa các tập. Báo cáo ghi sai số trên toàn bộ mẫu và riêng các mẫu có mưa. Chỉ đặt biến `RAIN_MODEL_FILE` thành đường dẫn tới tệp báo cáo có `evaluated: true` trên backend. Mô hình áp dụng cho đúng trạm trong tệp và chỉ được dùng khi các đầu vào cần thiết đạt chất lượng.
+Script so sánh Ridge dùng lượng mưa, Ridge dùng thêm khí áp và ước tính cường độ duy trì. Cả ba dùng cùng các tập thời gian, giữ mỗi đợt mưa trong một tập và chừa khoảng cách giữa các tập. Báo cáo ghi sai số trên toàn bộ mẫu và riêng các mẫu có mưa. Dùng báo cáo đạt kiểm định làm tệp `RAIN_MODEL_FILE` trên backend. Khi tải tệp, backend kiểm tra phiên bản, kích thước hệ số và kết quả trên cả hai tập validation và test. Mô hình áp dụng cho đúng trạm trong tệp khi các đầu vào cần thiết đạt chất lượng.

@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export function syncFrontendShared() {
+function syncFrontendShared() {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
   const source = path.join(root, 'backend/src/shared');
   const target = path.join(root, 'frontend/shared');
@@ -24,3 +24,5 @@ export function syncFrontendShared() {
   visit(source);
   console.log(`Frontend shared modules: ${changed} updated`);
 }
+
+syncFrontendShared();

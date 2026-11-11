@@ -8,7 +8,7 @@ import { RAIN_RULE_VERSION, rainQualityLabels, rainWindowMinutes } from '../shar
 import type { RainAlertEvidence, RainMonitorSnapshot, RainThresholdCheck } from '../shared/rain-monitor';
 import type { AlertRuleRecord } from '../shared/types/alert';
 import type { MeasurementRecord } from '../shared/types/telemetry';
-import { normalizeStationTimezone } from '../shared/rainsense-ai';
+import { normalizeStationTimezone } from '../shared/utils/time';
 import { classifyRainEvents } from './rain-ledger';
 import { availableAt, MINUTE, rainGapMs, rainPressure, rainWindow, roundRain } from './rain-observations';
 import type { RainObservations } from './rain-observations';

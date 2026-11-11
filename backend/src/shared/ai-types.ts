@@ -1,22 +1,3 @@
-export type HardwareVariant = 'unknown' | 'oled-s3' | 'rainsense-s3';
-
-export interface StationProfile {
-  environmentSensors?: 'unknown' | 'bme280' | 'bmp180-dht11';
-  hardwareVariant: HardwareVariant;
-  wiringVerified: boolean;
-  latitude?: number;
-  longitude?: number;
-  elevationMeters?: number;
-}
-
-export interface KnowledgeSource {
-  id: string;
-  title: string;
-  version: string;
-  path: string;
-  url?: string;
-}
-
 export interface MeasurementSummary {
   min: number;
   max: number;
@@ -41,37 +22,4 @@ export interface WeatherFeatures {
   availableSampleCount?: number;
   pressureDelta3hHpa: number | null;
   temperatureDelta1hC: number | null;
-}
-
-export interface ForecastPeriod {
-  pressureHpa?: number | null;
-  from: string;
-  to: string;
-  temperatureC: number | null;
-  humidityPercent: number | null;
-  precipitationMm: number | null;
-  precipitationProbabilityPercent: number | null;
-}
-
-export interface ForecastContext {
-  status: 'available' | 'missing_location' | 'disabled' | 'unavailable' | 'unsupported_range';
-  provider: 'Open-Meteo';
-  sourceUrl: string;
-  fetchedAt: string | null;
-  issuedAt: string | null;
-  expiresAt: string | null;
-  requestedFrom: string;
-  requestedTo: string;
-  latitude: number | null;
-  longitude: number | null;
-  periods: ForecastPeriod[];
-}
-
-export interface ChatMetadata {
-  mode: 'llm' | 'fallback' | 'calculation' | 'forecast' | 'analysis' | 'knowledge';
-  provider: 'gemini' | 'local' | 'open-meteo';
-  model: string | null;
-  generatedAt: string;
-  fallbackReason?: 'missing_api_key' | 'model_unavailable' | 'backend_unavailable';
-  sources: KnowledgeSource[];
 }

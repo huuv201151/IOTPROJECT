@@ -10,6 +10,7 @@ import type { AlertRecord } from '@/shared/types/alert';
 
 const card = 'rounded-xl border border-border bg-card p-4';
 const titles: Record<number, string> = { 15: '15 phút', 60: '1 giờ', 180: '3 giờ', 1440: '24 giờ' };
+const severityLabels = { INFO: 'Theo dõi', WARNING: 'Cảnh báo', CRITICAL: 'Nghiêm trọng' };
 
 export function RainMonitorPanel({ deviceId, dashboardDemo }: { deviceId: string; dashboardDemo: boolean }) {
   const [previewDemo, setPreviewDemo] = useState(false);
@@ -23,18 +24,22 @@ export function RainMonitorPanel({ deviceId, dashboardDemo }: { deviceId: string
   useEffect(() => {
     if (demo) return;
     const socket = getSocket();
+    const reload = () => { void queryClient.invalidateQueries({ queryKey: ['rain-monitor', deviceId, false] }); };
     const refresh = (alert: AlertRecord) => {
-      if (alert.deviceId === deviceId && alert.rainEvidence) {
-        void queryClient.invalidateQueries({ queryKey: ['rain-monitor', deviceId, false] });
-      }
+      if (alert.deviceId === deviceId && alert.rainEvidence) reload();
     };
     socket.on('alert:new', refresh);
-    return () => { socket.off('alert:new', refresh); };
+    socket.on('connect', reload);
+    return () => {
+      socket.off('alert:new', refresh);
+      socket.off('connect', reload);
+    };
   }, [demo, deviceId, queryClient]);
   const time = (value: string) => new Intl.DateTimeFormat('vi-VN', {
     timeZone: data?.timezone ?? 'Asia/Ho_Chi_Minh', dateStyle: 'short', timeStyle: 'short'
   }).format(new Date(value));
   const number = (value: number) => value.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
+  const evidence = data?.observation.alert;
   return (
     <section id="rain-monitor" className="space-y-3" aria-labelledby="rain-monitor-title">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -87,11 +92,19 @@ export function RainMonitorPanel({ deviceId, dashboardDemo }: { deviceId: string
             <p className="mt-1 text-xs text-muted-foreground">{time(data.forecast.validFrom)} – {time(data.forecast.validTo)}</p>
           </div>
           <div className={card}>
-            <h3 className="text-sm font-semibold">Cảnh báo quan trắc</h3>
+            <div className="flex flex-wrap items-center justify-between gap-1">
+              <h3 className="text-sm font-semibold">Cảnh báo quan trắc</h3>
+              {evidence && (
+                <span className={`rounded px-2 py-0.5 text-xs font-semibold ${evidence.severity === 'CRITICAL'
+                  ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'}`}>
+                  {severityLabels[evidence.severity]}
+                </span>
+              )}
+            </div>
             <p role="status" className={`mt-2 font-semibold ${data.observation.alert ? 'text-amber-700 dark:text-amber-300' : ''}`}>
               {rainObservationLabel(data.observation)}
             </p>
-            {data.observation.alert && <p className="mt-1 text-xs">{formatRainEvidence(data.observation.alert)}</p>}
+            {evidence && <p className="mt-1 text-xs">{formatRainEvidence(evidence)}</p>}
             <ul className="space-y-1 text-xs text-muted-foreground">
               {data.observation.thresholds?.filter((rule) => rule.ruleId !== data.observation.alert?.ruleId).map((rule) => (
                 <li key={rule.ruleId}>

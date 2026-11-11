@@ -73,7 +73,6 @@ export interface DemoEnvironmentData {
     deltaHpa: number;
     labelVi: string;
   };
-  scoreJitter: number;
 }
 
 export function getDemoEnvironment(scenarioId: DemoScenarioId, tick: number): DemoEnvironmentData {
@@ -83,7 +82,6 @@ export function getDemoEnvironment(scenarioId: DemoScenarioId, tick: number): De
   const tempNoise = Math.round((Math.sin(tick * 0.35) * 0.18 + Math.cos(tick * 0.75) * 0.06) * 10) / 10;
   const humNoise = Math.round((Math.cos(tick * 0.28) * 0.45 + Math.sin(tick * 0.65) * 0.15) * 10) / 10;
   const pressNoise = Math.round((Math.sin(tick * 0.3) * 0.2 + Math.cos(tick * 0.8) * 0.08) * 10) / 10;
-  const scoreNoise = Math.round(Math.sin(tick * 0.4) * 2);
 
   const temperature = Math.round((s.baseTemp + tempNoise) * 10) / 10;
   const humidity = Math.min(99.9, Math.max(20, Math.round((s.baseHumidity + humNoise) * 10) / 10));
@@ -110,7 +108,6 @@ export function getDemoEnvironment(scenarioId: DemoScenarioId, tick: number): De
       category: s.pressureTrendCategory,
       deltaHpa,
       labelVi
-    },
-    scoreJitter: scoreNoise
+    }
   };
 }

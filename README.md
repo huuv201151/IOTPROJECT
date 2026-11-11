@@ -92,7 +92,7 @@ npm run dev
 
 ## 🛠️ Tài Liệu Kỹ Thuật
 
-- **Chatbot AI, kho kiến thức, dự báo và train thử nghiệm:** [docs/RAINSENSE_AI_IMPLEMENTATION.md](docs/RAINSENSE_AI_IMPLEMENTATION.md).
+- **Theo dõi, cảnh báo và ước tính lượng mưa:** [Hướng dẫn cấu hình và kiểm định mô hình](docs/ai/rain-monitor.md).
 
 1. **Hướng dẫn Deploy lên Render:** Xem chi tiết tại [docs/DEPLOY_TO_RENDER.md](docs/DEPLOY_TO_RENDER.md).
 2. **Hướng dẫn kết nối EMQX & Aiven:** Xem chi tiết tại [docs/EMQX_AIVEN_GUIDE.md](docs/EMQX_AIVEN_GUIDE.md).

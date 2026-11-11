@@ -1,14 +1,16 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import express from 'express';
+import type { AddressInfo } from 'node:net';
 import { dataStore } from '../db/store';
 import { env } from '../config/env';
-import { AiService } from '../services/ai.service';
 import { buildRainMonitor, demoRainMonitor, RainMonitorService } from '../services/rain-monitor.service';
 import { availableAt, MINUTE, rainWindow } from '../services/rain-observations';
 import type { RainObservations } from '../services/rain-observations';
 import type { RainAlertEvidence } from '../shared/rain-monitor';
 import type { RainEventRecord } from '../shared/types/rain';
-import { rainMonitorQuestion, rainMonitorReply } from '../shared/rain-monitor-chat';
+import { apiRouter } from '../routes/api';
+import { rainModelSchema } from '../services/rain-model';
 
 const at = new Date('2026-11-09T07:00:00.000Z');
 const iso = (minutes: number) => new Date(at.getTime() + minutes * MINUTE).toISOString();
@@ -24,6 +26,45 @@ const event = (at: number, tips: number, calibrationFactor: number, id: string):
 });
 
 describe('Rain monitoring and 60-minute estimate', () => {
+  it('exposes rain monitoring and the training series through the API without chatbot routes', async (t) => {
+    await dataStore.upsertDevice({ deviceId, name: deviceId });
+    const app = express();
+    app.use('/api', apiRouter);
+    const server = app.listen(0, '127.0.0.1');
+    t.after(() => { server.close(); });
+    await new Promise<void>((resolve, reject) => { server.once('listening', resolve); server.once('error', reject); });
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
+    const from = new Date(Date.now() - MINUTE).toISOString();
+    const [demo, series, chat, context] = await Promise.all([
+      fetch(`${base}/devices/${deviceId}/rain-monitor?demo=1`),
+      fetch(`${base}/ai/series?deviceId=${deviceId}&from=${encodeURIComponent(from)}`),
+      fetch(`${base}/ai/chat`, { method: 'POST' }),
+      fetch(`${base}/ai/context`)
+    ]);
+    assert.equal(demo.status, 200);
+    assert.equal((await demo.json()).data.forecast.estimatedRainMm, 12.8);
+    assert.equal(series.status, 200);
+    assert.equal((await series.json()).data.deviceId, deviceId);
+    assert.equal(chat.status, 404);
+    assert.equal(context.status, 404);
+    await Promise.all([chat.arrayBuffer(), context.arrayBuffer()]);
+  });
+
+  it('loads Ridge artifacts only when both holdout splits beat the persistence estimate', () => {
+    const score = { count: 60, wetCount: 25, storms: 1, maeMm: 2, wetMaeMm: 4 };
+    const split = { baseline: score, rain: { ...score, maeMm: 1, wetMaeMm: 2 }, rainPressure: score };
+    const model = {
+      kind: 'rainsense-rain-ridge', evaluated: true, horizonMinutes: 60, deviceId, modelVersion: 'test-v1',
+      trainedFrom: iso(-60), trainedTo: iso(0), features: 'rain',
+      mean: [0, 0, 0, 0], scale: [1, 1, 1, 1], weights: [0, 0, 0, 0, 0]
+    };
+    assert.equal(rainModelSchema.safeParse(model).success, false);
+    assert.equal(rainModelSchema.safeParse({ ...model, metrics: { validation: split, test: split } }).success, true);
+    assert.equal(rainModelSchema.safeParse({
+      ...model, metrics: { validation: split, test: { ...split, rain: { ...score, maeMm: 1 } } }
+    }).success, false);
+  });
+
   it('reproduces the documented demo with separate measured and estimated values', () => {
     const demo = demoRainMonitor(deviceId);
     assert.equal(demo.demo, true);
@@ -38,8 +79,6 @@ describe('Rain monitoring and 60-minute estimate', () => {
     assert.equal(demo.forecast.estimatedRainMm, 12.8);
     assert.equal(demo.forecast.status, 'experimental');
     assert.equal(Date.parse(demo.forecast.validTo) - Date.parse(demo.forecast.validFrom), 60 * MINUTE);
-    assert.match(rainMonitorReply(demo, 'alert'), /^Kịch bản mô phỏng.*16 mm.*15 mm/);
-    assert.match(rainMonitorReply(demo, 'estimate'), /Nếu cường độ mưa hiện tại duy trì, ước tính 12.8 mm/);
   });
 
   it('distinguishes dry observations, outages, water tests without tips and simulation', () => {
@@ -124,30 +163,14 @@ describe('Rain monitoring and 60-minute estimate', () => {
     assert.equal(history[0].rainEvidence?.ruleVersion, evidence.ruleVersion);
   });
 
-  it('keeps external forecasts and arithmetic on their existing routes', () => {
-    assert.equal(rainMonitorQuestion('Dự báo lượng mưa 1 tiếng tới'), 'estimate');
-    assert.equal(rainMonitorQuestion('Có cảnh báo mưa trong 60 phút tới không?'), 'estimate');
-    assert.equal(rainMonitorQuestion('Ước tính lượng mưa trong 60 phút vừa qua'), null);
-    assert.equal(rainMonitorQuestion('Trạm có cảnh báo mưa không?'), 'alert');
-    assert.equal(rainMonitorQuestion('Công thức cảnh báo mưa là gì?'), null);
-    assert.equal(rainMonitorQuestion('Dự báo mưa Open-Meteo 1 tiếng tới'), null);
-    assert.equal(rainMonitorQuestion('Dự báo mưa ngày mai'), null);
-    assert.equal(rainMonitorQuestion('Nếu mưa 20 mm trong 1 tiếng tới thì nguy cơ thế nào?'), null);
-  });
-
-  it('uses one station result for the chatbot and never persists a demo alert', async () => {
+  it('serves the demo fixture without persisting a demo alert', async () => {
     await dataStore.upsertDevice({ deviceId, name: deviceId });
     const previous = env.DEMO_MODE;
     try {
-      env.DEMO_MODE = false;
-      const preview = await new AiService().chat('Ước tính lượng mưa 60 phút tới', [], deviceId, true);
-      assert.equal(preview.reply, rainMonitorReply(demoRainMonitor(deviceId), 'estimate'));
       env.DEMO_MODE = true;
       const service = new RainMonitorService();
       const snapshot = await service.getSnapshot(deviceId);
-      const chat = await new AiService().chat('Ước tính lượng mưa 60 phút tới', [], deviceId);
-      assert.deepEqual(chat.context.rainMonitor, snapshot);
-      assert.equal(chat.reply, rainMonitorReply(snapshot!, 'estimate'));
+      assert.deepEqual(snapshot, demoRainMonitor(deviceId));
       await service.evaluateStations();
       assert.deepEqual(await dataStore.getAlerts({ deviceId }), []);
     } finally {

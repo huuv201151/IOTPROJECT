@@ -17,8 +17,7 @@ import {
   Minus,
   Activity,
   CheckCircle2,
-  RotateCcw,
-  Waves
+  RotateCcw
 } from 'lucide-react';
 import {
   AreaChart,
@@ -41,8 +40,7 @@ import { formatDateTimeVi, formatTimeVi } from '@/lib/utils';
 import {
   classifyPressureTrend,
   getHumidityStatusVi,
-  calculateDewPoint,
-  calculateFloodRisk
+  calculateDewPoint
 } from '@/lib/weather-calc';
 
 export default function OverviewPage() {
@@ -227,19 +225,6 @@ export default function OverviewPage() {
   const humidityStatus = getHumidityStatusVi(effectiveHumid ?? 50);
   const pressureTrend = effectivePressureTrend;
 
-  // LƯỢNG MƯA LUÔN LẤY TỪ GÀU LẬT THỰC TẾ
-  const floodRisk = calculateFloodRisk({
-    rainRate: rainfall?.currentRateMmH ?? latest?.rainRate ?? 0,
-    todayMm: rainfall?.todayMm ?? 0,
-    rolling24hMm: rainfall?.rolling24hMm ?? rainfall?.todayMm ?? 0,
-    humidity: effectiveHumid,
-    pressure: effectivePressure,
-    pressureTrendCategory: pressureTrend?.category,
-    demoScenarioId: isDemoMode ? demoScenario : undefined,
-    demoScoreJitter: isDemoMode ? demoEnvironment.scoreJitter : 0
-  });
-
-
   const tooltipStyle = isDark
     ? { backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '12px', color: '#F1F5F9' }
     : { backgroundColor: '#FFFFFF', borderColor: '#E2E8F0', borderRadius: '12px', color: '#0F172A', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' };
@@ -380,7 +365,7 @@ export default function OverviewPage() {
 
       <RainMonitorPanel deviceId={stationId} dashboardDemo={isDemoMode} />
 
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Nhiệt độ */}
         <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:border-orange-500/40 transition-all group">
           <div className="flex items-center justify-between mb-3">
@@ -494,29 +479,6 @@ export default function OverviewPage() {
           </div>
         </div>
 
-        {/* Card 5: Nguy cơ ngập lụt */}
-        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:border-cyan-500/40 transition-all group">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              Nguy cơ ngập lụt
-            </span>
-            <div className={`w-9 h-9 rounded-xl ${floodRisk.bgClass} border ${floodRisk.borderClass} flex items-center justify-center ${floodRisk.textClass} group-hover:scale-110 transition-transform`}>
-              <Waves className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className={`text-3xl md:text-4xl font-extrabold tracking-tight font-mono ${floodRisk.textClass}`}>
-              {floodRisk.levelVi}
-            </span>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-              {floodRisk.score}%
-            </span>
-          </div>
-          <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800/60 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>Đánh giá:</span>
-            <span className={`font-medium ${floodRisk.textClass} line-clamp-1`}>{floodRisk.summary}</span>
-          </div>
-        </div>
       </section>
 
       {/* ============================================================== */}

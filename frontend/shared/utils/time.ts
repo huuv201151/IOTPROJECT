@@ -4,6 +4,16 @@
 
 export const DEFAULT_TIMEZONE = 'Asia/Ho_Chi_Minh';
 
+export function normalizeStationTimezone(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) return DEFAULT_TIMEZONE;
+  try {
+    new Intl.DateTimeFormat('vi-VN', { timeZone: value });
+    return value;
+  } catch {
+    return DEFAULT_TIMEZONE;
+  }
+}
+
 /**
  * Get start of day timestamp for a given date in a specific timezone
  * For Asia/Ho_Chi_Minh (UTC+7), midnight is UTC 17:00 of the preceding day.

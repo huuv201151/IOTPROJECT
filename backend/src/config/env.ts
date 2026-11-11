@@ -18,20 +18,6 @@ for (const envPath of envCandidates) {
 }
 dotenv.config();
 
-const StationProfileSchema = z.object({
-  environmentSensors: z.enum(['unknown', 'bme280', 'bmp180-dht11']).default('unknown'),
-  hardwareVariant: z.enum(['unknown', 'oled-s3', 'rainsense-s3']).default('unknown'),
-  wiringVerified: z.boolean().default(false),
-  latitude: z.number().min(-90).max(90).optional(),
-  longitude: z.number().min(-180).max(180).optional(),
-  elevationMeters: z.number().min(-500).max(9000).optional()
-}).refine((p) => (p.latitude === undefined) === (p.longitude === undefined), 'Cần cả latitude và longitude');
-
-const StationProfilesSchema = z.string().default('{}').transform((text, ctx) => {
-  try { return JSON.parse(text) as unknown; }
-  catch { ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'AI_STATION_PROFILES phải là JSON hợp lệ' }); return z.NEVER; }
-}).pipe(z.record(StationProfileSchema));
-
 const EnvSchema = z.object({
   PORT: z.string().default('5000').transform((val) => parseInt(val, 10)),
   HOST: z.string().default('0.0.0.0'),
@@ -74,12 +60,6 @@ const EnvSchema = z.object({
   DEFAULT_STATION_ID: z.string().default('RS-ESP32S3-01'),
   DEFAULT_CALIBRATION_MM_PER_TIP: z.string().default('0.25').transform((val) => parseFloat(val)),
   DEFAULT_TIMEZONE: z.string().default('Asia/Ho_Chi_Minh'),
-  GEMINI_API_KEY: z.string().optional().default(''),
-  GEMINI_MODEL: z.string().regex(/^[a-zA-Z0-9._-]+$/).default('gemini-3.5-flash-lite'),
-  GEMINI_FALLBACK_MODEL: z.string().regex(/^[a-zA-Z0-9._-]+$/).default('gemini-3.8-flash'),
-  AI_STATION_PROFILES: StationProfilesSchema,
-  AI_FORECAST_ENABLED: z.string().default('true').transform((s) => s === 'true' || s === '1'),
-  OPEN_METEO_API_KEY: z.string().default(''),
   RAIN_MODEL_FILE: z.string().default('')
 });
 

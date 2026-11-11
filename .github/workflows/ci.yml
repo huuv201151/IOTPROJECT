@@ -20,9 +20,6 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rainsense
       DEMO_MODE: 'false'
-      GEMINI_API_KEY: ''
-      AI_STATION_PROFILES: '{}'
-      AI_FORECAST_ENABLED: 'true'
       NEXT_TELEMETRY_DISABLED: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -36,7 +33,7 @@ jobs:
       - name: Generate Prisma Client from the backend schema
         run: npm run prisma:generate --workspace=backend
       - run: npm test
-      - name: Verify approved knowledge and chatbot policy are committed
-        run: git diff --exit-code -- backend/src/shared/knowledge.generated.ts backend/src/shared/policy.generated.ts frontend/shared docs/ai/realtime-chatbot-spec.md
+      - name: Verify shared frontend modules are synchronized
+        run: git diff --exit-code -- frontend/shared
       - run: npm run lint
       - run: npm run build

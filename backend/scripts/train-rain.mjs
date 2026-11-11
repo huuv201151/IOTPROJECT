@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { solve } from './train-weather.mjs';
 import { availableAt, MINUTE, rainGapMs, rainPressure, rainWindow } from '../src/services/rain-observations.ts';
 import { classifyRainEvents } from '../src/services/rain-ledger.ts';
+import { improvesRainMae } from '../src/services/rain-model.ts';
 
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
@@ -109,8 +110,6 @@ function evaluate(rows, predict, storms) {
   };
 }
 
-const improves = (a, b) => a.wetMaeMm !== null && b.wetMaeMm !== null && a.maeMm < b.maeMm && a.wetMaeMm < b.wetMaeMm;
-
 export function trainRainModel(payload) {
   const { examples, storms, candidates } = makeRainExamples(payload);
   const paired = examples.filter((row) => row.pressure.every((value) => value !== null));
@@ -131,12 +130,12 @@ export function trainRainModel(payload) {
   const rainPressureModel = fit(train, true);
   const score = (set) => ({ baseline: baseline(set), rain: evaluate(set, rain.predict, storms), rainPressure: evaluate(set, rainPressureModel.predict, storms) });
   const metrics = { validation: score(validation), test: score(test) };
-  const usePressure = improves(metrics.validation.rainPressure, metrics.validation.rain);
+  const usePressure = improvesRainMae(metrics.validation.rainPressure, metrics.validation.rain);
   const selection = usePressure ? 'rainPressure' : 'rain';
   const chosen = usePressure ? rainPressureModel : rain;
-  const evaluated = improves(metrics.validation[selection], metrics.validation.baseline)
-    && improves(metrics.test[selection], metrics.test.baseline)
-    && (!usePressure || improves(metrics.test.rainPressure, metrics.test.rain));
+  const evaluated = improvesRainMae(metrics.validation[selection], metrics.validation.baseline)
+    && improvesRainMae(metrics.test[selection], metrics.test.baseline)
+    && (!usePressure || improvesRainMae(metrics.test.rainPressure, metrics.test.rain));
   if (!evaluated) return { evaluated, coverage, metrics, reason: 'Mô hình đã chọn chưa cải thiện MAE tổng và MAE khi có mưa trên tập giữ lại.' };
   return {
     kind: 'rainsense-rain-ridge', evaluated, coverage, metrics, horizonMinutes: 60,

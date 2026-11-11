@@ -10,11 +10,7 @@ import {
   Waves,
   Zap,
   RotateCcw,
-  AlertTriangle,
-  Activity,
-  ArrowDownRight,
-  Minus,
-  Sparkles
+  Activity
 } from 'lucide-react';
 import {
   BarChart,
@@ -30,7 +26,6 @@ import { useTheme, useDemo } from '@/app/providers';
 import { DEMO_SCENARIOS } from '@/lib/demo-scenarios';
 import { formatDateTimeVi, formatTimeVi } from '@/lib/utils';
 import { RainDataAudit } from '@/components/RainDataAudit';
-import { calculateFloodRisk, classifyPressureTrend } from '@/lib/weather-calc';
 import { RainMonitorPanel } from '@/components/RainMonitorPanel';
 import { useStationId } from '@/components/layout/AppShell';
 
@@ -38,7 +33,7 @@ export default function RainfallPage() {
   const stationId = useStationId();
   const queryClient = useQueryClient();
   const { resolvedTheme } = useTheme();
-  const { isDemoMode, demoScenario, setDemoScenario, demoEnvironment } = useDemo();
+  const { isDemoMode, demoScenario, setDemoScenario } = useDemo();
   const isDark = resolvedTheme === 'dark';
   const [chartMode, setChartMode] = useState<'hourly' | 'daily'>('hourly');
   const [isResettingRain, setIsResettingRain] = useState(false);
@@ -84,33 +79,6 @@ export default function RainfallPage() {
     queryKey: ['dailyRain', stationId],
     queryFn: () => api.getDailyRain(stationId, 7),
     refetchInterval: 10000
-  });
-
-  // Fetch unified dashboard summary for environmental context
-  const { data: summary } = useQuery({
-    queryKey: ['dashboardSummary', stationId],
-    queryFn: () => api.getDashboardSummary(stationId),
-    refetchInterval: 10000
-  });
-
-  const latest = summary?.latestMeasurement;
-
-  const effectiveHumid = isDemoMode ? demoEnvironment.humidity : (latest?.humidity ?? 70);
-  const effectivePressure = isDemoMode ? demoEnvironment.pressure : (latest?.pressure ?? 1013);
-  const effectivePressureTrend = isDemoMode
-    ? demoEnvironment.pressureTrend
-    : classifyPressureTrend(latest?.pressure ?? 1013);
-
-  // LƯỢNG MƯA LUÔN LẤY TỪ GÀU LẬT THỰC TẾ
-  const floodRisk = calculateFloodRisk({
-    rainRate: stats?.currentRateMmH ?? latest?.rainRate ?? 0,
-    todayMm: stats?.todayMm ?? 0,
-    rolling24hMm: stats?.rolling24hMm ?? stats?.todayMm ?? 0,
-    humidity: effectiveHumid,
-    pressure: effectivePressure,
-    pressureTrendCategory: effectivePressureTrend?.category,
-    demoScenarioId: isDemoMode ? demoScenario : undefined,
-    demoScoreJitter: isDemoMode ? demoEnvironment.scoreJitter : 0
   });
 
   if (isLoading) {
@@ -321,142 +289,6 @@ export default function RainfallPage() {
       </section>
 
       <RainMonitorPanel deviceId={stationId} dashboardDemo={isDemoMode} />
-
-      {/* ============================================================== */}
-      {/* 2. AI FLOOD RISK ANALYSIS                                      */}
-      {/* ============================================================== */}
-      <section className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-6 transition-colors">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <Waves className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
-                <span>AI Flood Risk Analysis</span>
-              </h2>
-            </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Mô hình AI phân tích nguy cơ ngập lụt đa yếu tố: lượng mưa tích lũy, cường độ mưa, độ bão hòa ẩm đất và biến thiên khí quyển
-            </p>
-          </div>
-
-          {/* Overall Status Badge */}
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
-                Chỉ số rủi ro AI
-              </span>
-              <span className={`text-lg font-mono font-extrabold ${floodRisk.textClass}`}>
-                {floodRisk.score} / 100
-              </span>
-            </div>
-            <div className={`px-4 py-2 rounded-xl border font-bold text-sm flex items-center gap-2 ${floodRisk.bgClass} ${floodRisk.borderClass} ${floodRisk.textClass}`}>
-              <AlertTriangle className="w-4 h-4" />
-              <span>Nguy cơ ngập: {floodRisk.levelVi}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Main 2-column grid: Score & Trend Gauge + Contributing Factors */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          {/* Left Column: Risk Score & Trend */}
-          <div className="p-5 rounded-xl bg-slate-50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-700/50 space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
-                Mức độ nguy cơ ngập
-              </span>
-              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${floodRisk.bgClass} ${floodRisk.textClass}`}>
-                {floodRisk.summary}
-              </span>
-            </div>
-
-            {/* Visual Progress Bar */}
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-xs font-mono">
-                <span className="text-slate-400">0% (An toàn)</span>
-                <span className={`font-bold ${floodRisk.textClass}`}>{floodRisk.score}%</span>
-                <span className="text-slate-400">100% (Nguy hiểm)</span>
-              </div>
-              <div className="h-3 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden p-0.5">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    floodRisk.level === 'CRITICAL'
-                      ? 'bg-rose-500'
-                      : floodRisk.level === 'HIGH'
-                      ? 'bg-orange-500'
-                      : floodRisk.level === 'MODERATE'
-                      ? 'bg-amber-500'
-                      : 'bg-emerald-500'
-                  }`}
-                  style={{ width: `${Math.max(floodRisk.score, 6)}%` }}
-                />
-              </div>
-            </div>
-
-            {/* Trend indicator */}
-            <div className="p-3 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Activity className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
-                <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Xu hướng nguy cơ:</span>
-              </div>
-              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1">
-                {floodRisk.trendIcon === 'rising' ? (
-                  <TrendingUp className="w-4 h-4 text-rose-500" />
-                ) : floodRisk.trendIcon === 'falling' ? (
-                  <ArrowDownRight className="w-4 h-4 text-emerald-500" />
-                ) : (
-                  <Minus className="w-4 h-4 text-slate-400" />
-                )}
-                {floodRisk.trendVi}
-              </span>
-            </div>
-          </div>
-
-          {/* Right 2 Columns: Các yếu tố ảnh hưởng (Contributing Factors) */}
-          <div className="lg:col-span-2 space-y-3">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-              Các yếu tố ảnh hưởng và chỉ số môi trường
-            </span>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {floodRisk.factors.map((f, idx) => (
-                <div
-                  key={idx}
-                  className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-700/50 space-y-1.5 transition-colors"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-600 dark:text-slate-400">{f.name}</span>
-                    <span className={`font-mono font-bold text-xs ${f.color}`}>{f.value}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-slate-400">Đánh giá trạng thái:</span>
-                    <span className={`font-semibold ${f.color}`}>{f.statusVi}</span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight pt-1 border-t border-slate-200/60 dark:border-slate-700/40">
-                    {f.impact}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom AI Explanation & Recommendation Box */}
-        <div className="p-4 rounded-xl bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-indigo-500/10 border border-cyan-500/20 space-y-2">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
-            <span className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wide">
-              Giải thích AI & Nhận định xu hướng
-            </span>
-          </div>
-          <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-            {floodRisk.aiExplanation}
-          </p>
-          <div className="pt-2 border-t border-cyan-500/20 flex items-start gap-2 text-xs text-slate-600 dark:text-slate-400">
-            <span className="font-semibold text-cyan-700 dark:text-cyan-300 shrink-0">Khuyến cáo an toàn:</span>
-            <span>{floodRisk.actionRecommendation}</span>
-          </div>
-        </div>
-      </section>
 
       <RainDataAudit deviceId={stationId} />
       {/* C. INTERACTIVE RAINFALL CHARTS */}

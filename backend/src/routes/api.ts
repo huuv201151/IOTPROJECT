@@ -5,12 +5,12 @@ import { telemetryController } from '../controllers/telemetry.controller';
 import { alertController } from '../controllers/alert.controller';
 import { exportController } from '../controllers/export.controller';
 import { demoController } from '../controllers/demo.controller';
-import { aiController } from '../controllers/ai.controller';
+import { getObservationSeries } from '../controllers/observation-series.controller';
 import { systemController } from '../controllers/system.controller';
 import { authenticate } from '../middleware/auth.middleware';
 import { rainAuditController } from '../controllers/rain-audit.controller';
 import { rainMonitorService } from '../services/rain-monitor.service';
-import { deviceIdSchema } from '../shared/ai-request';
+import { deviceIdSchema } from '../shared/schemas/device.schema';
 
 export const apiRouter = Router();
 
@@ -78,7 +78,5 @@ apiRouter.get('/demo/mode', demoController.getMode);
 apiRouter.post('/demo/toggle', demoController.toggleMode);
 apiRouter.post('/demo/simulate-tip', demoController.simulateTip);
 
-// Chiikawa AI Assistant
-apiRouter.post('/ai/chat', aiController.chat);
-apiRouter.get('/ai/context', aiController.getContext);
-apiRouter.get('/ai/series', aiController.getSeries);
+// Historical observations used for offline model training.
+apiRouter.get('/ai/series', getObservationSeries);
