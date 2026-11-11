@@ -15,11 +15,14 @@ import {
 import { api } from '@/lib/api';
 import { formatDateTimeVi } from '@/lib/utils';
 import { useStationId } from '@/components/layout/AppShell';
+import { RainMonitorPanel } from '@/components/RainMonitorPanel';
+import { useDemo } from '@/context/demo-context';
 import { getSocket } from '@/lib/socket';
 import type { AlertRecord } from '@/shared/types/alert';
 
 export default function AlertsPage() {
   const stationId = useStationId();
+  const { isDemoMode } = useDemo();
   const queryClient = useQueryClient();
   const [filterType, setFilterType] = useState<string>('all');
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
@@ -49,7 +52,6 @@ export default function AlertsPage() {
     const refresh = (alert: AlertRecord) => {
       if (alert.deviceId === stationId) {
         void queryClient.invalidateQueries({ queryKey: ['alerts', stationId] });
-        void queryClient.invalidateQueries({ queryKey: ['rain-monitor', stationId] });
       }
     };
     socket.on('alert:new', refresh);
@@ -138,6 +140,8 @@ export default function AlertsPage() {
           <span>Thêm ngưỡng cảnh báo</span>
         </button>
       </div>
+
+      <RainMonitorPanel deviceId={stationId} dashboardDemo={isDemoMode} />
 
       {/* Alert Rules Section */}
       <section id="alert-rules" className="bg-card border border-border rounded-2xl p-5 shadow-sm space-y-4 transition-colors">

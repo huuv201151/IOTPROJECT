@@ -1,6 +1,6 @@
 # Theo dõi và cảnh báo mưa RainSense
 
-Khối **Theo dõi và cảnh báo mưa** trên trang **Tổng quan** và **Phân tích lượng mưa** hiển thị lượng tích lũy và tốc độ trung bình trong 15 phút, 1 giờ, 3 giờ và 24 giờ của trạm đang chọn. Khối này có diễn biến khí áp 3 giờ, ước tính lượng mưa 60 phút tới, ngưỡng đang áp dụng và trạng thái cảnh báo quan trắc. Lịch sử có bộ lọc **Mưa** để xem các sự kiện và thời gian của cửa sổ đo.
+Khối **Theo dõi và cảnh báo mưa** có trên các trang **Tổng quan**, **Phân tích lượng mưa** và **Cảnh báo & Sự kiện**. Khối hiển thị lượng tích lũy và tốc độ trung bình trong 15 phút, 1 giờ, 3 giờ và 24 giờ của trạm đang chọn, cùng diễn biến khí áp 3 giờ, ước tính lượng mưa 60 phút tới, ngưỡng đang áp dụng và trạng thái cảnh báo quan trắc. Trên trang **Cảnh báo & Sự kiện**, bạn có thể mở **Xem mô phỏng** ngay phía trên phần cấu hình ngưỡng. Lịch sử có bộ lọc **Mưa** để xem các sự kiện và thời gian của cửa sổ đo.
 
 Render phục vụ dashboard của cùng bản phát hành tại đường dẫn `/dashboard/overview/`. Dashboard kết nối API và Socket.IO trên cùng tên miền Render.
 
