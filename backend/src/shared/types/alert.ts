@@ -1,5 +1,8 @@
+import type { RainAlertEvidence } from '../rain-monitor';
+
 export type AlertType =
   | 'HEAVY_RAIN'
+  | 'RAIN_ACCUMULATION'
   | 'HIGH_TEMPERATURE'
   | 'LOW_TEMPERATURE'
   | 'HIGH_HUMIDITY'
@@ -33,4 +36,5 @@ export interface AlertRecord {
   isRead: boolean;
   createdAt: string;
   resolvedAt?: string;
+  rainEvidence?: RainAlertEvidence;
 }

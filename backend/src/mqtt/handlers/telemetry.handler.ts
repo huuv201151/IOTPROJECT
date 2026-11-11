@@ -161,8 +161,7 @@ async function processTelemetryMessage(topic: string, rawPayload: Buffer | strin
       });
 
       // Evaluate alert rules
-      const rainStats = await rainfallService.getStatistics(deviceId);
-      const alert = await alertService.evaluateTelemetry(deviceId, saved, rainStats.currentRateMmH);
+      const alert = await alertService.evaluateTelemetry(deviceId, saved);
       if (alert) {
         emitNewAlert(alert);
       }

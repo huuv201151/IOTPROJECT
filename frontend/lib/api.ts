@@ -1,5 +1,6 @@
 import type { ChatMetadata } from '@/shared/ai-types';
 import type { StationContext } from './rainsense-ai';
+import type { RainMonitorSnapshot } from '@/shared/rain-monitor';
 
 const DEFAULT_REMOTE_BACKEND = 'https://rainsense-backend-dlxg.onrender.com';
 
@@ -84,6 +85,8 @@ export const api = {
   getEnvironmentalStats: (id: string) => request<any>(`/api/devices/${id}/statistics`),
 
   getRainfallStats: (id: string) => request<any>(`/api/devices/${id}/rainfall`),
+  getRainMonitor: (id: string, demo = false) =>
+    request<RainMonitorSnapshot>(`/api/devices/${encodeURIComponent(id)}/rain-monitor${demo ? '?demo=1' : ''}`),
   getHourlyRain: (id: string, hours: number = 24) =>
     request<any[]>(`/api/devices/${id}/hourly-rain?hours=${hours}`),
   getDailyRain: (id: string, days: number = 7) =>
@@ -123,7 +126,7 @@ export const api = {
     message: string,
     history: Array<{ role: 'user' | 'assistant'; content: string }> = [],
     deviceId: string = 'RS-ESP32S3-01',
-    _context?: unknown
+    rainMonitorDemo = false
   ): Promise<{ reply: string; context: StationContext; metadata?: ChatMetadata }> => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 40000);
@@ -132,7 +135,7 @@ export const api = {
         method: 'POST',
         signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, history, deviceId })
+        body: JSON.stringify({ message, history, deviceId, rainMonitorDemo })
       });
       const json = await localRes.json();
       if (!localRes.ok || json.success !== true || !json.data?.reply || json.data?.context?.deviceId !== deviceId) {

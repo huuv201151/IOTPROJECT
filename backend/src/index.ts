@@ -10,6 +10,7 @@ import { initMqttClient, getMqttInfo } from './mqtt/client';
 import { stationSimulator } from './mqtt/simulator';
 import { apiRouter } from './routes/api';
 import { alertService } from './services/alert.service';
+import { rainMonitorService } from './services/rain-monitor.service';
 import { renderStatusPageHtml } from './views/statusPage';
 
 const app = express();
@@ -118,6 +119,12 @@ async function startServer() {
         // silent
       }
     }, 30000);
+
+    const evaluateRain = () => rainMonitorService.evaluateStations().catch((error) => {
+      logger.warn({ err: error }, 'Rain monitoring cycle failed');
+    });
+    void evaluateRain();
+    setInterval(evaluateRain, 5 * 60000);
 
     server.listen(env.PORT, env.HOST, () => {
       logger.info(`RainSense Backend Server listening on http://${env.HOST}:${env.PORT}`);

@@ -9,7 +9,7 @@ export class AlertService {
   /**
    * Evaluate telemetry measurements against device alert rules
    */
-  async evaluateTelemetry(deviceId: string, measurement: MeasurementRecord, rainRate?: number) {
+  async evaluateTelemetry(deviceId: string, measurement: MeasurementRecord) {
     const rules = await dataStore.getAlertRules(deviceId);
     const activeRules = rules.filter((r) => r.enabled);
     const now = Date.now();
@@ -54,13 +54,6 @@ export class AlertService {
           }
           break;
 
-        case 'HEAVY_RAIN':
-          const currentRate = rainRate ?? measurement.rainRate ?? 0;
-          if (rule.comparison === 'GREATER_THAN' && currentRate > rule.threshold) {
-            triggered = true;
-            alertMessage = `Lưu lượng nước qua gầu quy đổi đạt ${currentRate} mm/h (vượt ngưỡng ${rule.threshold} mm/h), đã loại khoảng thử được đánh dấu; chưa xác minh mưa tự nhiên`;
-          }
-          break;
       }
 
       if (triggered) {

@@ -143,6 +143,12 @@ VÍ DỤ PHÂN BIỆT Ý HỎI
 - “Đo lượng mưa như nào?” → Giải thích cơ chế, P=N×k, I=P×60/t và ví dụ giả định. Không đưa số mm hôm nay vào thay lời giải thích.
 - “Độ ẩm hiện tại thì sao?” → Nêu RH thực có, ý nghĩa khô/ẩm cùng mốc đo; không chuyển sang mưa hoặc khí áp chưa được hỏi.
 - “Hôm nay thời tiết thế nào?” → Đọc T/RH/khí áp/mưa và độ mới, mở đầu bằng nhận xét tổng hợp thích hợp (mát, ấm, nóng/oi ẩm, gần đây có ghi mưa); không suy thời tiết cả ngày từ nhiệt độ hoặc áp suất riêng lẻ.
+
+CẢNH BÁO MƯA VÀ ƯỚC TÍNH TẠI TRẠM
+- Khi có rainMonitor, dùng trạng thái, cửa sổ, ngưỡng, thời điểm và nguồn của kết quả này để trả lời về cảnh báo mưa tại trạm. Nếu hỏi cảnh báo, nêu trạng thái trước rồi nêu lượng đo, cửa sổ và ngưỡng liên quan. Giữ đúng đơn vị mm tích lũy và mm/h trung bình.
+- Dữ liệu gián đoạn, nhịp chưa xác định thời gian và nước thử phải được ghi đúng trạng thái. Không quy dữ liệu thiếu thành 0 mm. Kịch bản mô phỏng phải ghi rõ là mô phỏng.
+- Khi hỏi 60 phút tới, dùng forecast của rainMonitor nếu có. Nêu khoảng giờ dự báo, phương pháp và lượng ước tính. Với persistence, nói rõ giả định cường độ trung bình 15 phút vừa qua tiếp tục duy trì. Với Ridge, nêu phiên bản. Nếu giá trị thiếu, nêu lý do từ kết quả.
+- Có thể nói áp suất tăng hoặc giảm theo chênh lệch thực đo trong 3 giờ. Không suy ra xác suất mưa từ khí áp hoặc tạo cảnh báo quan trắc từ ước tính. Với nguy cơ ngập, mô tả theo điều kiện và lượng đo, tránh khẳng định đã có lũ.
 ```
 
 ## Dữ liệu ứng dụng cần nạp mỗi lượt

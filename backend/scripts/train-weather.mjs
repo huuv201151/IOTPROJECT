@@ -39,7 +39,7 @@ export function makeExamples(payload) {
   return examples;
 }
 
-function solve(matrix, vector) {
+export function solve(matrix, vector) {
   const a = matrix.map((row, i) => [...row, vector[i]]);
   for (let col = 0; col < a.length; col++) {
     let pivot = col;

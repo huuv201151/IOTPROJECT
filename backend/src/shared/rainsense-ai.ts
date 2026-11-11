@@ -1,4 +1,6 @@
 import { RAIN_SENSE_POLICY } from './policy.generated';
+import type { RainMonitorSnapshot } from './rain-monitor';
+import { rainMonitorQuestion, rainMonitorReply } from './rain-monitor-chat';
 /** Portable chatbot policy and offline responses, shared with the Next.js client/server. */
 import { getBucketCalculationReply, getRainHazardReply } from './rain-assistant';
 import { getProjectKnowledgeReply, getWeatherFeatureReply } from './project-knowledge';
@@ -64,6 +66,7 @@ export interface StationContext {
   calibrationFactor: number | null;
   pressureTrend: string;
   recentAlerts: string[];
+  rainMonitor?: RainMonitorSnapshot;
   rainHistory: RainHistory | null;
   rainWindows?: RainWindow[];
   profile?: StationProfile;
@@ -110,6 +113,7 @@ export function normalizeStationContext(input: Partial<StationContext> | null | 
     totalTipsToday: numeric(c.totalTipsToday), calibrationFactor: numeric(c.calibrationFactor),
     pressureTrend: c.pressureTrend || 'Chưa đủ lịch sử để xác định',
     recentAlerts: Array.isArray(c.recentAlerts) ? c.recentAlerts.filter((v) => typeof v === 'string') : [],
+    rainMonitor: c.rainMonitor,
     rainHistory: c.rainHistory ?? null,
     rainWindows: c.rainWindows ?? [],
     profile: c.profile,
@@ -146,6 +150,10 @@ function time(iso: string | null, timezone: string): string {
 
 export function generateRainSenseReply(query: string, c: StationContext, history: ChatTurn[] = [], now = new Date()): string {
   query = resolveChatQuestion(query, cleanChatHistory(history));
+  const monitoringIntent = rainMonitorQuestion(query);
+  if (monitoringIntent) return c.rainMonitor && Date.parse(c.rainMonitor.forecast.validTo) > now.getTime()
+    ? rainMonitorReply(c.rainMonitor, monitoringIntent)
+    : 'Chưa nhận được bản đánh giá mưa mới từ máy chủ trạm.';
   const calibration = getCalibrationReply(query);
   if (calibration) return calibration;
   const calculation = getBucketCalculationReply(query, c);

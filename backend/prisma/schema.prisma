@@ -139,12 +139,21 @@ model Alert {
   isRead     Boolean   @default(false)
   createdAt  DateTime  @default(now())
   resolvedAt DateTime?
+  rainEvidence Json?
 
   device     Device    @relation(fields: [deviceId], references: [deviceId], onDelete: Cascade)
 
   @@index([deviceId, createdAt])
   @@index([isRead])
   @@map("alerts")
+}
+
+model RainAlertState {
+  deviceId    String   @id
+  level       Int
+  evaluatedAt DateTime
+
+  @@map("rain_alert_states")
 }
 
 model DeviceCommand {

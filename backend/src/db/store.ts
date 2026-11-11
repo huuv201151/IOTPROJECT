@@ -14,6 +14,8 @@ import bcrypt from 'bcryptjs';
 import { recordReadSource } from './read-diagnostics';
 import { randomUUID } from 'node:crypto';
 import type { RainTestPeriod } from '../shared/types/rain';
+import type { RainAlertEvidence } from '../shared/rain-monitor';
+import { formatRainEvidence } from '../shared/rain-monitor';
 
 // In-memory persistent caches for standalone/demo operation or fallback
 class InMemoryStore {
@@ -30,6 +32,14 @@ class InMemoryStore {
 }
 
 const memoryStore = new InMemoryStore();
+const rainAlertStates = new Map<string, { level: number; at: number }>();
+
+function rainAlertRecord(deviceId: string, evidence: RainAlertEvidence, at: string): AlertRecord {
+  return {
+    id: randomUUID(), deviceId, type: evidence.unit === 'mm' ? 'RAIN_ACCUMULATION' : 'HEAVY_RAIN',
+    severity: evidence.severity, message: formatRainEvidence(evidence), isRead: false, createdAt: at, rainEvidence: evidence
+  };
+}
 
 export const dataStore = {
   // ----------------------------------------------------
@@ -661,6 +671,7 @@ export const dataStore = {
         const list = await getPrismaClient().alertRule.findMany({
           where: { deviceId }
         });
+        recordReadSource('postgresql');
         return list.map((r) => ({
           id: r.id,
           deviceId: r.deviceId,
@@ -677,6 +688,7 @@ export const dataStore = {
         logger.error({ err }, 'Prisma error getAlertRules');
       }
     }
+    recordReadSource('memory');
     return memoryStore.alertRules.filter((r) => r.deviceId === deviceId);
   },
 
@@ -789,6 +801,34 @@ export const dataStore = {
     return alert;
   },
 
+  async recordRainAlert(deviceId: string, level: number | null, at: string, evidence: RainAlertEvidence | null): Promise<AlertRecord | null> {
+    const evaluatedAt = new Date(at);
+    if (isDbConnected()) {
+      return getPrismaClient().$transaction(async (tx) => {
+        await tx.$executeRaw`INSERT INTO rain_alert_states ("deviceId", level, "evaluatedAt")
+          VALUES (${deviceId}, 0, ${new Date(0)}) ON CONFLICT ("deviceId") DO NOTHING`;
+        const [previous] = await tx.$queryRaw<Array<{ level: number; evaluatedAt: Date }>>`
+          SELECT level, "evaluatedAt" FROM rain_alert_states WHERE "deviceId" = ${deviceId} FOR UPDATE`;
+        if (previous.evaluatedAt >= evaluatedAt) return null;
+        await tx.rainAlertState.update({
+          where: { deviceId },
+          data: { level: level === 0 ? 0 : Math.max(level ?? previous.level, previous.level), evaluatedAt }
+        });
+        if (!evidence || level === null || level <= previous.level) return null;
+        const record = rainAlertRecord(deviceId, evidence, at);
+        await tx.alert.create({ data: { ...record, createdAt: evaluatedAt, rainEvidence: { ...evidence } } });
+        return record;
+      });
+    }
+    const previous = rainAlertStates.get(deviceId) ?? { level: 0, at: 0 };
+    if (previous.at >= evaluatedAt.getTime()) return null;
+    rainAlertStates.set(deviceId, { level: level === 0 ? 0 : Math.max(level ?? previous.level, previous.level), at: evaluatedAt.getTime() });
+    if (!evidence || level === null || level <= previous.level) return null;
+    const record = rainAlertRecord(deviceId, evidence, at);
+    memoryStore.alerts.unshift(record);
+    return record;
+  },
+
   async getAlerts(filter?: { deviceId?: string; isRead?: boolean; limit?: number }): Promise<AlertRecord[]> {
     const limit = filter?.limit || 100;
     if (isDbConnected()) {
@@ -810,7 +850,8 @@ export const dataStore = {
           message: a.message,
           isRead: a.isRead,
           createdAt: a.createdAt.toISOString(),
-          resolvedAt: a.resolvedAt?.toISOString()
+          resolvedAt: a.resolvedAt?.toISOString(),
+          rainEvidence: (a.rainEvidence as unknown as RainAlertEvidence | null) ?? undefined
         }));
       } catch (err) {
         logger.error({ err }, 'Prisma error getAlerts');
@@ -843,7 +884,8 @@ export const dataStore = {
           message: a.message,
           isRead: a.isRead,
           createdAt: a.createdAt.toISOString(),
-          resolvedAt: a.resolvedAt?.toISOString()
+          resolvedAt: a.resolvedAt?.toISOString(),
+          rainEvidence: (a.rainEvidence as unknown as RainAlertEvidence | null) ?? undefined
         };
       } catch (err) {
         logger.error({ err }, 'Prisma error resolveAlert');

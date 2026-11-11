@@ -85,7 +85,6 @@ export function emitDeviceStatus(
 
 export function emitNewAlert(alert: AlertRecord) {
   if (!ioInstance) return;
-  ioInstance.to(`station:${alert.deviceId}`).emit('alert:new', alert);
   ioInstance.emit('alert:new', alert);
 }
 

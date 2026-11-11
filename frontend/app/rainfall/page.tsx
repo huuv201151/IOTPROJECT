@@ -31,8 +31,11 @@ import { DEMO_SCENARIOS } from '@/lib/demo-scenarios';
 import { formatDateTimeVi, formatTimeVi } from '@/lib/utils';
 import { RainDataAudit } from '@/components/RainDataAudit';
 import { calculateFloodRisk, classifyPressureTrend } from '@/lib/weather-calc';
+import { RainMonitorPanel } from '@/components/RainMonitorPanel';
+import { useStationId } from '@/components/layout/AppShell';
 
 export default function RainfallPage() {
+  const stationId = useStationId();
   const queryClient = useQueryClient();
   const { resolvedTheme } = useTheme();
   const { isDemoMode, demoScenario, setDemoScenario, demoEnvironment } = useDemo();
@@ -46,7 +49,7 @@ export default function RainfallPage() {
     }
     setIsResettingRain(true);
     try {
-      await api.resetRainOnly('RS-ESP32S3-01');
+      await api.resetRainOnly(stationId);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['rainfall'] }),
         queryClient.invalidateQueries({ queryKey: ['hourlyRain'] }),
@@ -63,29 +66,29 @@ export default function RainfallPage() {
 
   // Fetch rainfall statistics
   const { data: stats, isLoading } = useQuery({
-    queryKey: ['rainfall', 'RS-ESP32S3-01'],
-    queryFn: () => api.getRainfallStats('RS-ESP32S3-01'),
+    queryKey: ['rainfall', stationId],
+    queryFn: () => api.getRainfallStats(stationId),
     refetchInterval: 10000
   });
 
   // Fetch hourly rain
   const { data: hourlyRain = [] } = useQuery({
-    queryKey: ['hourlyRain', 'RS-ESP32S3-01'],
-    queryFn: () => api.getHourlyRain('RS-ESP32S3-01', 24),
+    queryKey: ['hourlyRain', stationId],
+    queryFn: () => api.getHourlyRain(stationId, 24),
     refetchInterval: 10000
   });
 
   // Fetch daily rain (7 days)
   const { data: dailyRain = [] } = useQuery({
-    queryKey: ['dailyRain', 'RS-ESP32S3-01'],
-    queryFn: () => api.getDailyRain('RS-ESP32S3-01', 7),
+    queryKey: ['dailyRain', stationId],
+    queryFn: () => api.getDailyRain(stationId, 7),
     refetchInterval: 10000
   });
 
   // Fetch unified dashboard summary for environmental context
   const { data: summary } = useQuery({
-    queryKey: ['dashboardSummary'],
-    queryFn: () => api.getDashboardSummary(),
+    queryKey: ['dashboardSummary', stationId],
+    queryFn: () => api.getDashboardSummary(stationId),
     refetchInterval: 10000
   });
 
@@ -316,6 +319,7 @@ export default function RainfallPage() {
         </div>
       </section>
 
+      <RainMonitorPanel deviceId={stationId} dashboardDemo={isDemoMode} />
 
       {/* ============================================================== */}
       {/* 2. AI FLOOD RISK ANALYSIS                                      */}
@@ -453,7 +457,7 @@ export default function RainfallPage() {
         </div>
       </section>
 
-      <RainDataAudit deviceId="RS-ESP32S3-01" />
+      <RainDataAudit deviceId={stationId} />
       {/* C. INTERACTIVE RAINFALL CHARTS */}
       <section className="bg-card border border-border rounded-2xl p-5 shadow-sm space-y-4 transition-colors">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

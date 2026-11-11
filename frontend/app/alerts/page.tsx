@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Bell,
@@ -14,14 +14,18 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { formatDateTimeVi } from '@/lib/utils';
+import { useStationId } from '@/components/layout/AppShell';
+import { getSocket } from '@/lib/socket';
+import type { AlertRecord } from '@/shared/types/alert';
 
 export default function AlertsPage() {
+  const stationId = useStationId();
   const queryClient = useQueryClient();
   const [filterType, setFilterType] = useState<string>('all');
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
 
   // Form states for new alert rule
-  const [alertType, setAlertType] = useState('HEAVY_RAIN');
+  const [alertType, setAlertType] = useState('RAIN_ACCUMULATION');
   const [threshold, setThreshold] = useState<number>(15);
   const [comparison, setComparison] = useState<'GREATER_THAN' | 'LESS_THAN'>('GREATER_THAN');
   const [severity, setSeverity] = useState<'INFO' | 'WARNING' | 'CRITICAL'>('WARNING');
@@ -29,16 +33,28 @@ export default function AlertsPage() {
 
   // Fetch alerts
   const { data: alerts = [], isLoading: alertsLoading } = useQuery({
-    queryKey: ['alerts'],
-    queryFn: () => api.getAlerts(),
+    queryKey: ['alerts', stationId],
+    queryFn: () => api.getAlerts(stationId),
     refetchInterval: 5000
   });
 
   // Fetch alert rules
   const { data: rules = [], isLoading: rulesLoading } = useQuery({
-    queryKey: ['alertRules', 'RS-ESP32S3-01'],
-    queryFn: () => api.getAlertRules('RS-ESP32S3-01')
+    queryKey: ['alertRules', stationId],
+    queryFn: () => api.getAlertRules(stationId)
   });
+
+  useEffect(() => {
+    const socket = getSocket();
+    const refresh = (alert: AlertRecord) => {
+      if (alert.deviceId === stationId) {
+        void queryClient.invalidateQueries({ queryKey: ['alerts', stationId] });
+        void queryClient.invalidateQueries({ queryKey: ['rain-monitor', stationId] });
+      }
+    };
+    socket.on('alert:new', refresh);
+    return () => { socket.off('alert:new', refresh); };
+  }, [queryClient, stationId]);
 
   // Resolve alert mutation
   const resolveMutation = useMutation({
@@ -55,6 +71,7 @@ export default function AlertsPage() {
       api.updateAlertRule(id, { enabled }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['alertRules'] });
+      queryClient.invalidateQueries({ queryKey: ['rain-monitor', stationId] });
     }
   });
 
@@ -63,6 +80,7 @@ export default function AlertsPage() {
     mutationFn: (newRule: any) => api.createAlertRule(newRule),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['alertRules'] });
+      queryClient.invalidateQueries({ queryKey: ['rain-monitor', stationId] });
       setIsRuleModalOpen(false);
     }
   });
@@ -70,10 +88,10 @@ export default function AlertsPage() {
   const handleCreateRule = (e: React.FormEvent) => {
     e.preventDefault();
     createRuleMutation.mutate({
-      deviceId: 'RS-ESP32S3-01',
+      deviceId: stationId,
       alertType,
       threshold: Number(threshold),
-      comparison,
+      comparison: alertType === 'RAIN_ACCUMULATION' || alertType === 'HEAVY_RAIN' ? 'GREATER_THAN' : comparison,
       severity,
       enabled: true,
       description: description || `Quy tắc cảnh báo ${alertType}`
@@ -175,8 +193,10 @@ export default function AlertsPage() {
               </div>
               <div className="font-mono text-cyan-600 dark:text-cyan-300 text-[11px]">
                 Ngưỡng: {rule.comparison === 'GREATER_THAN' ? '>' : '<'} {rule.threshold}
-                {rule.alertType === 'HEAVY_RAIN'
-                  ? ' mm/h'
+                {rule.alertType === 'RAIN_ACCUMULATION'
+                  ? ' mm trong 60 phút'
+                  : rule.alertType === 'HEAVY_RAIN'
+                  ? ' mm/h trong cửa sổ 5 phút'
                   : rule.alertType.includes('TEMPERATURE')
                   ? ' °C'
                   : rule.alertType.includes('HUMIDITY')
@@ -314,7 +334,8 @@ export default function AlertsPage() {
                   onChange={(e) => setAlertType(e.target.value)}
                   className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg p-2.5 text-slate-800 dark:text-slate-200 text-xs"
                 >
-                  <option value="HEAVY_RAIN">Mưa lớn (HEAVY_RAIN)</option>
+                  <option value="RAIN_ACCUMULATION">Lượng mưa trong 60 phút (mm)</option>
+                  <option value="HEAVY_RAIN">Cường độ trong 5 phút (mm/h)</option>
                   <option value="HIGH_TEMPERATURE">Nhiệt độ cao (HIGH_TEMPERATURE)</option>
                   <option value="LOW_TEMPERATURE">Nhiệt độ thấp (LOW_TEMPERATURE)</option>
                   <option value="HIGH_HUMIDITY">Độ ẩm cao (HIGH_HUMIDITY)</option>
@@ -327,7 +348,8 @@ export default function AlertsPage() {
                 <div className="space-y-1">
                   <label className="font-medium text-slate-700 dark:text-slate-300">So sánh:</label>
                   <select
-                    value={comparison}
+                    value={alertType === 'RAIN_ACCUMULATION' || alertType === 'HEAVY_RAIN' ? 'GREATER_THAN' : comparison}
+                    disabled={alertType === 'RAIN_ACCUMULATION' || alertType === 'HEAVY_RAIN'}
                     onChange={(e: any) => setComparison(e.target.value)}
                     className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg p-2.5 text-slate-800 dark:text-slate-200 text-xs"
                   >
@@ -337,10 +359,13 @@ export default function AlertsPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-medium text-slate-700 dark:text-slate-300">Ngưỡng kích hoạt:</label>
+                  <label className="font-medium text-slate-700 dark:text-slate-300">
+                    {alertType === 'RAIN_ACCUMULATION' ? 'Ngưỡng (mm trong 60 phút)' : alertType === 'HEAVY_RAIN' ? 'Ngưỡng (mm/h)' : 'Ngưỡng kích hoạt'}
+                  </label>
                   <input
                     type="number"
                     step="0.1"
+                    min={alertType === 'RAIN_ACCUMULATION' || alertType === 'HEAVY_RAIN' ? '0.1' : undefined}
                     value={threshold}
                     onChange={(e) => setThreshold(parseFloat(e.target.value))}
                     className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg p-2.5 text-slate-900 dark:text-slate-100 font-mono text-xs"

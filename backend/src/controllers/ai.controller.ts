@@ -27,11 +27,12 @@ export const aiController = {
       }
       budget.count++;
       budgets.set(key, budget);
-      const { message, history, deviceId } = parsed.data;
+      const { message, history, deviceId, rainMonitorDemo } = parsed.data;
       const result = await aiService.chat(
         message.trim(),
         cleanChatHistory(history) as ChatMessage[],
-        deviceId
+        deviceId,
+        rainMonitorDemo
       );
 
       return res.json({

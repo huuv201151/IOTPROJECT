@@ -79,7 +79,8 @@ const EnvSchema = z.object({
   GEMINI_FALLBACK_MODEL: z.string().regex(/^[a-zA-Z0-9._-]+$/).default('gemini-3.8-flash'),
   AI_STATION_PROFILES: StationProfilesSchema,
   AI_FORECAST_ENABLED: z.string().default('true').transform((s) => s === 'true' || s === '1'),
-  OPEN_METEO_API_KEY: z.string().default('')
+  OPEN_METEO_API_KEY: z.string().default(''),
+  RAIN_MODEL_FILE: z.string().default('')
 });
 
 export const env = EnvSchema.parse(process.env);

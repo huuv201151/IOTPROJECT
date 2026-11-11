@@ -17,6 +17,8 @@ import { isStationAnalysisQuery, stationAnalysis, stationAnalysisReply, getSenso
 import { answerInstruction, wantsDetailedAnswer } from '../shared/answer-style';
 import { getRainScenarioReply, isWaterTestQuery } from '../shared/rain-interpretation';
 import { getWeatherSummaryReply } from '../shared/weather-summary';
+import { rainMonitorQuestion, rainMonitorReply } from '../shared/rain-monitor-chat';
+import { rainMonitorService } from './rain-monitor.service';
 import {
   buildRainSensePrompt, cleanChatHistory, generateRainSenseReply, getBucketCalculationReply, normalizeStationContext, normalizeStationTimezone,
   type ChatTurn, type StationContext
@@ -115,7 +117,7 @@ export class AiService {
     return { report: value, source };
   }
 
-  async chat(userMessage: string, history: ChatMessage[] = [], deviceId = env.DEFAULT_STATION_ID): Promise<ChatResult> {
+  async chat(userMessage: string, history: ChatMessage[] = [], deviceId = env.DEFAULT_STATION_ID, rainMonitorDemo = false): Promise<ChatResult> {
     const context = await this.getLiveContext(deviceId);
     const validHistory = cleanChatHistory(history);
     const searchQuery = resolveChatQuestion(userMessage, validHistory);
@@ -152,6 +154,13 @@ export class AiService {
     };
     const calibration = getCalibrationReply(searchQuery);
     if (calibration) return finish(calibration, 'calculation');
+    const monitoringIntent = rainMonitorQuestion(searchQuery);
+    if (monitoringIntent) {
+      const snapshot = await rainMonitorService.getSnapshot(deviceId, new Date(), env.DEMO_MODE || rainMonitorDemo).catch(() => null);
+      if (!snapshot) return finish('Chưa đọc được dữ liệu cảnh báo mưa của trạm.', 'analysis', null, undefined, false);
+      context.rainMonitor = snapshot;
+      return finish(rainMonitorReply(snapshot, monitoringIntent), 'analysis', null, undefined, false);
+    }
     const scenario = knowledgeExplanation ? null : getRainScenarioReply(searchQuery) ?? getSensorScenarioReply(searchQuery);
     if (scenario) return finish(scenario, 'analysis', null, undefined, false);
     const weatherSummary = knowledgeExplanation ? null : getWeatherSummaryReply(searchQuery, context);

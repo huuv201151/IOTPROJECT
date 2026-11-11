@@ -9,6 +9,8 @@ import { aiController } from '../controllers/ai.controller';
 import { systemController } from '../controllers/system.controller';
 import { authenticate } from '../middleware/auth.middleware';
 import { rainAuditController } from '../controllers/rain-audit.controller';
+import { rainMonitorService } from '../services/rain-monitor.service';
+import { deviceIdSchema } from '../shared/ai-request';
 
 export const apiRouter = Router();
 
@@ -43,6 +45,17 @@ apiRouter.get('/devices/:id/statistics', telemetryController.getEnvironmentalSum
 
 // Rainfall Analytics
 apiRouter.get('/devices/:id/rainfall', telemetryController.getRainfallStats);
+apiRouter.get('/devices/:id/rain-monitor', async (req, res) => {
+  const station = deviceIdSchema.safeParse(req.params.id);
+  if (!station.success) return res.status(400).json({ success: false, error: 'Mã trạm không hợp lệ' });
+  try {
+    const data = await rainMonitorService.getSnapshot(station.data, new Date(), req.query.demo === '1' ? true : undefined);
+    if (!data) return res.status(404).json({ success: false, error: 'Không tìm thấy trạm' });
+    return res.json({ success: true, data });
+  } catch {
+    return res.status(503).json({ success: false, error: 'Chưa đọc được dữ liệu cảnh báo mưa của trạm' });
+  }
+});
 apiRouter.get('/devices/:id/hourly-rain', telemetryController.getHourlyRain);
 apiRouter.get('/devices/:id/daily-rain', telemetryController.getDailyRain);
 apiRouter.get('/devices/:id/rain-audit', rainAuditController.list);

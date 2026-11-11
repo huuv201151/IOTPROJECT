@@ -6,6 +6,7 @@
   "scripts": {
     "knowledge:build": "node scripts/build-knowledge.mjs",
     "ai:train:weather": "node scripts/train-weather.mjs",
+    "ai:train:rain": "tsx scripts/train-rain.mjs",
     "predev": "npm run knowledge:build",
     "prebuild": "npm run knowledge:build",
     "pretest": "npm run knowledge:build",
@@ -19,7 +20,7 @@
     "db:push": "prisma db push --schema=prisma/schema.prisma",
     "db:seed": "tsx src/db/seed.ts",
     "db:studio": "prisma studio --schema=prisma/schema.prisma",
-    "test": "tsx --test src/tests/rainfall.test.ts src/tests/deduplication.test.ts src/tests/offline.test.ts src/tests/ai.test.ts src/tests/ai-platform.test.ts src/tests/observation-ledger.test.ts src/tests/ai-regressions.test.ts src/tests/expert.test.ts src/tests/realtime-expert.test.ts src/tests/hardware-dialogue.test.ts src/tests/question-focus.test.ts scripts/train-weather.test.mjs"
+    "test": "tsx --test src/tests/rainfall.test.ts src/tests/deduplication.test.ts src/tests/offline.test.ts src/tests/ai.test.ts src/tests/ai-platform.test.ts src/tests/observation-ledger.test.ts src/tests/ai-regressions.test.ts src/tests/expert.test.ts src/tests/realtime-expert.test.ts src/tests/hardware-dialogue.test.ts src/tests/question-focus.test.ts src/tests/rain-monitor.test.ts scripts/train-weather.test.mjs scripts/train-rain.test.mjs"
   },
   "dependencies": {
     "@prisma/client": "^5.19.1",

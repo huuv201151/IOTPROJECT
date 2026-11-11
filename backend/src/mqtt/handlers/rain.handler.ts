@@ -1,8 +1,7 @@
 import { RainEventPayloadSchema, RainEventPayload } from '../../shared';
 import { dataStore } from '../../db/store';
 import { rainfallService } from '../../services/rainfall.service';
-import { alertService } from '../../services/alert.service';
-import { emitRainUpdate, emitNewAlert } from '../../socket/io';
+import { emitRainUpdate } from '../../socket/io';
 import { logger } from '../../utils/logger';
 import { advanceRainCounter, withRainLock } from '../../services/rain-counter';
 
@@ -49,15 +48,6 @@ async function processRainEventMessage(topic: string, rawPayload: Buffer | strin
 
       // Realtime broadcast to web dashboard
       emitRainUpdate(data.deviceId, savedEvent, stats);
-
-      // Check Heavy Rain alert rule if applicable
-      const latestMeas = await dataStore.getLatestMeasurement(data.deviceId);
-      if (latestMeas) {
-        const alert = await alertService.evaluateTelemetry(data.deviceId, latestMeas, stats.currentRateMmH);
-        if (alert) {
-          emitNewAlert(alert);
-        }
-      }
 
       logger.info(
         { deviceId: data.deviceId, tipCount: data.tipCount, mm: savedEvent.rainfallMm, currentRate: stats.currentRateMmH },

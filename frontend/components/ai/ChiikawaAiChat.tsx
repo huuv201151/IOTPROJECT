@@ -15,7 +15,9 @@ import {
 } from 'lucide-react';
 import { RainSenseIcon } from './RainSenseIcon';
 import { api } from '@/lib/api';
+import { useDemo } from '@/app/providers';
 import { generateRainSenseReply, normalizeStationContext } from '@/lib/rainsense-ai';
+import { rainMonitorQuestion, rainMonitorReply } from '@/shared/rain-monitor-chat';
 import type { ChatMetadata } from '@/shared/ai-types';
 
 interface Message {
@@ -42,12 +44,15 @@ const SUGGESTED_PROMPTS = [
   '📊 Nhiệt độ, độ ẩm, áp suất và lượng mưa trong 1 tiếng',
   '📐 Hiệu chuẩn 100 ml, diện tích 100 cm², 20 nhịp thì hệ số bao nhiêu?',
   '🌦️ Dự báo thời tiết ngày mai tại trạm',
+  '🌧️ Ước tính lượng mưa 60 phút tới',
+  '🔔 Trạm có cảnh báo mưa không?',
   '📶 Từ nước mưa đến biểu đồ web hoạt động như thế nào?',
   '🔌 Điện trở kéo lên I2C có tác dụng gì?',
   '🔍 Áp suất 1013 hPa có chắc trời đẹp không?'
 ];
 
 export function ChiikawaAiChat({ stationId = 'RS-ESP32S3-01' }: { stationId?: string }) {
+  const { isDemoMode } = useDemo();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([DEFAULT_WELCOME_MESSAGE]);
   const [inputValue, setInputValue] = useState('');
@@ -65,7 +70,7 @@ export function ChiikawaAiChat({ stationId = 'RS-ESP32S3-01' }: { stationId?: st
     setIsTyping(false);
     setInputValue('');
     return () => { generation.current++; };
-  }, [stationId]);
+  }, [stationId, isDemoMode]);
 
   // Fetch live context from station
   const { data: contextData } = useQuery({
@@ -117,7 +122,7 @@ export function ChiikawaAiChat({ stationId = 'RS-ESP32S3-01' }: { stationId?: st
         content: m.content
       }));
 
-      const res = await api.chatWithAi(text, history, stationId, contextData);
+      const res = await api.chatWithAi(text, history, stationId, isDemoMode);
       if (requestGeneration !== generation.current) return;
 
       const botMsg: Message = {
@@ -131,11 +136,18 @@ export function ChiikawaAiChat({ stationId = 'RS-ESP32S3-01' }: { stationId?: st
       setMessages((prev) => [...prev, botMsg]);
     } catch (err: any) {
       if (requestGeneration !== generation.current) return;
+      const requestError = err?.status === 400 || err?.status === 429;
+      const monitoringIntent = requestError ? null : rainMonitorQuestion(text);
+      const snapshot = monitoringIntent ? await api.getRainMonitor(stationId, isDemoMode).catch(() => null) : null;
+      if (requestGeneration !== generation.current) return;
+      const content = requestError ? err.message : monitoringIntent
+        ? snapshot ? rainMonitorReply(snapshot, monitoringIntent) : 'Chưa đọc được dữ liệu cảnh báo mưa của trạm.'
+        : generateRainSenseReply(text, normalizeStationContext(contextData, stationId), messages.filter((m) => m.id !== 'msg-welcome'));
       const errorMsg: Message = {
         id: `bot-${Date.now()}`,
         role: 'assistant',
-        content: err?.status === 400 || err?.status === 429 ? err.message : generateRainSenseReply(text, normalizeStationContext(contextData, stationId), messages.filter((m) => m.id !== 'msg-welcome')),
-        metadata: { mode: 'fallback', provider: 'local', model: null, generatedAt: new Date().toISOString(), fallbackReason: err?.status === 400 || err?.status === 429 ? undefined : 'backend_unavailable', sources: [] },
+        content,
+        metadata: { mode: snapshot ? 'analysis' : 'fallback', provider: 'local', model: null, generatedAt: new Date().toISOString(), fallbackReason: requestError || snapshot ? undefined : 'backend_unavailable', sources: [] },
         timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
       };
       setMessages((prev) => [...prev, errorMsg]);

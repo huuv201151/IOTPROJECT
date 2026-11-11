@@ -4,5 +4,6 @@ export const deviceIdSchema = z.string().trim().min(1).max(80).regex(/^[a-zA-Z0-
 export const chatRequestSchema = z.object({
   message: z.string().trim().min(1).max(4000),
   deviceId: deviceIdSchema,
-  history: z.unknown().optional()
+  history: z.unknown().optional(),
+  rainMonitorDemo: z.boolean().optional()
 });
