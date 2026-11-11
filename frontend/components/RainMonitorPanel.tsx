@@ -79,17 +79,20 @@ export function RainMonitorPanel({ deviceId, dashboardDemo }: { deviceId: string
   const activeScenarioConfig = DEMO_SCENARIOS[demoScenario];
 
   // Determine current active risk tier (1: Safe, 2: Moderate, 3: Warning, 4: Critical)
+  // Integrates both direct observation thresholds and AI short-term forecast dynamics
   let currentTier: 1 | 2 | 3 | 4 = 1;
+  const forecastRain = data?.forecast?.estimatedRainMm ?? 0;
+
   if (demo && demoScenario) {
     if (demoScenario === 'critical') currentTier = 4;
     else if (demoScenario === 'high') currentTier = 3;
     else if (demoScenario === 'moderate') currentTier = 2;
     else currentTier = 1;
-  } else if (evidence?.severity === 'CRITICAL') {
+  } else if (evidence?.severity === 'CRITICAL' || forecastRain >= 50) {
     currentTier = 4;
-  } else if (evidence?.severity === 'WARNING' || data?.observation.status === 'heavy') {
+  } else if (evidence?.severity === 'WARNING' || data?.observation.status === 'heavy' || forecastRain >= 15) {
     currentTier = 3;
-  } else if (data?.observation.status === 'rain' || (data?.windows.find((w) => w.minutes === 60)?.rainfallMm ?? 0) > 0) {
+  } else if (data?.observation.status === 'rain' || (data?.windows.find((w) => w.minutes === 60)?.rainfallMm ?? 0) > 0 || forecastRain > 0) {
     currentTier = 2;
   } else {
     currentTier = 1;
