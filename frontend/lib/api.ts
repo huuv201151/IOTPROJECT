@@ -1,5 +1,3 @@
-import type { ChatMetadata } from '@/shared/ai-types';
-import type { StationContext } from './rainsense-ai';
 import type { RainMonitorSnapshot } from '@/shared/rain-monitor';
 
 const DEFAULT_REMOTE_BACKEND = 'https://rainsense-backend-dlxg.onrender.com';
@@ -119,47 +117,5 @@ export const api = {
     if (to) q += `&to=${encodeURIComponent(to)}`;
     if (types && types.length) q += `&types=${types.join(',')}`;
     return `${getApiBase()}/api/export?${q}`;
-  },
-
-  // RainSense AI Assistant (with multi-tier fallback)
-  chatWithAi: async (
-    message: string,
-    history: Array<{ role: 'user' | 'assistant'; content: string }> = [],
-    deviceId: string = 'RS-ESP32S3-01',
-    rainMonitorDemo = false
-  ): Promise<{ reply: string; context: StationContext; metadata?: ChatMetadata }> => {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 40000);
-    try {
-      const localRes = await fetch('/api/ai/chat', {
-        method: 'POST',
-        signal: controller.signal,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, history, deviceId, rainMonitorDemo })
-      });
-      const json = await localRes.json();
-      if (!localRes.ok || json.success !== true || !json.data?.reply || json.data?.context?.deviceId !== deviceId) {
-        throw Object.assign(new Error(json.error || 'Chưa kết nối được RainSense AI'), { status: localRes.status });
-      }
-      return json.data;
-    } finally { clearTimeout(timeout); }
-  },
-
-  getAiContext: async (deviceId: string = 'RS-ESP32S3-01'): Promise<any> => {
-    // 1. Try local Next.js route first
-    try {
-      const res = await fetch(`/api/ai/context?deviceId=${encodeURIComponent(deviceId)}`);
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.data) {
-          return json.data;
-        }
-      }
-    } catch (e) {
-      // Fall through to backend
-    }
-
-    // 2. Try Render backend
-    return await request<any>(`/api/ai/context?deviceId=${encodeURIComponent(deviceId)}`);
   }
 };
