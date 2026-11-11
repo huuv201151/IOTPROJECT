@@ -5,7 +5,7 @@ import { dataStore } from '../db/store';
 import { emitNewAlert } from '../socket/io';
 import { logger } from '../utils/logger';
 import { RAIN_RULE_VERSION, rainQualityLabels, rainWindowMinutes } from '../shared/rain-monitor';
-import type { RainAlertEvidence, RainMonitorSnapshot } from '../shared/rain-monitor';
+import type { RainAlertEvidence, RainMonitorSnapshot, RainThresholdCheck } from '../shared/rain-monitor';
 import type { AlertRuleRecord } from '../shared/types/alert';
 import type { MeasurementRecord } from '../shared/types/telemetry';
 import { normalizeStationTimezone } from '../shared/rainsense-ai';
@@ -29,10 +29,13 @@ export function buildRainMonitor(
   const byMinutes = (minutes: number) => windows.find((window) => window.minutes === minutes)!;
   const configured = rainRules(rules);
   const matched: RainAlertEvidence[] = [];
+  const thresholds: RainThresholdCheck[] = [];
   for (const rule of configured) {
-    const window = byMinutes(rule.alertType === 'RAIN_ACCUMULATION' ? 60 : 5);
+    const windowMinutes = rule.alertType === 'RAIN_ACCUMULATION' ? 60 : 5;
+    const window = byMinutes(windowMinutes);
     const unit = rule.alertType === 'RAIN_ACCUMULATION' ? 'mm' : 'mm/h';
     const value = unit === 'mm' ? window.rainfallMm : window.averageMmH;
+    thresholds.push({ ruleId: rule.id, windowMinutes, unit, threshold: rule.threshold, value, quality: window.quality });
     if (value === null || value <= rule.threshold) continue;
     matched.push({
       source: demo ? 'simulation' : 'observed', ruleVersion: RAIN_RULE_VERSION, ruleId: rule.id,
@@ -44,7 +47,7 @@ export function buildRainMonitor(
     || b.threshold - a.threshold || a.ruleId.localeCompare(b.ruleId))[0] ?? null;
   const recent = byMinutes(15);
   const hour = byMinutes(60);
-  const missingRuleWindow = configured.some((rule) => byMinutes(rule.alertType === 'RAIN_ACCUMULATION' ? 60 : 5).quality !== 'complete');
+  const missingRuleWindow = thresholds.some(({ quality }) => quality !== 'complete');
   const status = alert ? 'heavy' : recent.rainfallMm === null || missingRuleWindow ? 'insufficient' : recent.rainfallMm > 0 || (hour.rainfallMm ?? 0) > 0 ? 'rain' : 'dry';
   const bounds = { validFrom: generatedAt, validTo: new Date(at + 60 * MINUTE).toISOString() };
   const forecast: RainMonitorSnapshot['forecast'] = {
@@ -66,7 +69,7 @@ export function buildRainMonitor(
   }, null);
   return {
     deviceId: input.deviceId, timezone, generatedAt, observedAt, demo, windows, pressure,
-    observation: { status, alert, rulesConfigured: configured.length > 0 },
+    observation: { status, alert, rulesConfigured: thresholds.length > 0, thresholds },
     forecast: evaluated ? { ...bounds, ...evaluated, method: 'ridge', status: 'evaluated', reason: null } : forecast
   };
 }

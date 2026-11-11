@@ -127,7 +127,10 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         press = currentDemoEnv.pressure;
         source = 'demo';
       } else {
-        const summary = queryClient.getQueryData<any>(['dashboardSummary']);
+        const overview = queryClient.getQueryState<any>(['dashboardSummary', 'RS-ESP32S3-01']);
+        const environmental = queryClient.getQueryState<any>(['dashboardSummary']);
+        const summary = overview && overview.dataUpdatedAt >= (environmental?.dataUpdatedAt ?? 0)
+          ? overview.data : environmental?.data;
         const latest = summary?.latestMeasurement;
         if (latest && typeof latest.temperature === 'number') {
           temp = latest.temperature;

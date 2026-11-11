@@ -54,7 +54,8 @@ export default function RainfallPage() {
         queryClient.invalidateQueries({ queryKey: ['rainfall'] }),
         queryClient.invalidateQueries({ queryKey: ['hourlyRain'] }),
         queryClient.invalidateQueries({ queryKey: ['dailyRain'] }),
-        queryClient.invalidateQueries({ queryKey: ['dashboardSummary'] })
+        queryClient.invalidateQueries({ queryKey: ['dashboardSummary'] }),
+        queryClient.invalidateQueries({ queryKey: ['rain-monitor', stationId, false] })
       ]);
       alert('Đã đặt lại lượng mưa và số nhịp lật về 0 thành công!');
     } catch (err: any) {

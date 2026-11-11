@@ -27,6 +27,15 @@ export interface RainAlertEvidence {
   to: string;
 }
 
+export interface RainThresholdCheck {
+  ruleId: string;
+  windowMinutes: 5 | 60;
+  unit: 'mm' | 'mm/h';
+  threshold: number;
+  value: number | null;
+  quality: RainQuality;
+}
+
 export interface RainMonitorSnapshot {
   deviceId: string;
   timezone: string;
@@ -35,7 +44,12 @@ export interface RainMonitorSnapshot {
   demo: boolean;
   windows: MonitoredRainWindow[];
   pressure: { hpa: number | null; delta3hHpa: number | null; reason: string | null };
-  observation: { status: 'dry' | 'rain' | 'heavy' | 'insufficient'; alert: RainAlertEvidence | null; rulesConfigured: boolean };
+  observation: {
+    status: 'dry' | 'rain' | 'heavy' | 'insufficient';
+    alert: RainAlertEvidence | null;
+    rulesConfigured: boolean;
+    thresholds: RainThresholdCheck[];
+  };
   forecast: {
     validFrom: string;
     validTo: string;

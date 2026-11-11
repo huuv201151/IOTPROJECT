@@ -31,6 +31,9 @@ describe('Rain monitoring and 60-minute estimate', () => {
     assert.equal(demo.observation.alert?.value, 16);
     assert.equal(demo.observation.alert?.threshold, 15);
     assert.equal(demo.observation.alert?.unit, 'mm');
+    assert.deepEqual(demo.observation.thresholds, [{
+      ruleId: 'demo-60m', windowMinutes: 60, unit: 'mm', threshold: 15, value: 16, quality: 'complete'
+    }]);
     assert.equal(demo.pressure.delta3hHpa, -1.8);
     assert.equal(demo.forecast.estimatedRainMm, 12.8);
     assert.equal(demo.forecast.status, 'experimental');
@@ -79,6 +82,26 @@ describe('Rain monitoring and 60-minute estimate', () => {
     assert.equal(pressure.hpa, null);
     assert.equal(pressure.delta3hHpa, null);
     assert.equal(forecast.estimatedRainMm, 12.8);
+  });
+
+  it('shows the enabled station thresholds with separate units and preserves unavailable readings', () => {
+    const common = {
+      deviceId, comparison: 'GREATER_THAN', severity: 'WARNING', enabled: true,
+      createdAt: iso(-60), updatedAt: iso(-60)
+    } as const;
+    const { observation } = buildRainMonitor({
+      ...input, measurements: measurements.slice(0, 20)
+    }, [
+      { ...common, id: 'rate', alertType: 'HEAVY_RAIN', threshold: 15 },
+      { ...common, id: 'hour', alertType: 'RAIN_ACCUMULATION', threshold: 10 },
+      { ...common, id: 'disabled', alertType: 'RAIN_ACCUMULATION', threshold: 30, enabled: false }
+    ], at, 'UTC');
+    assert.equal(observation.status, 'insufficient');
+    assert.equal(observation.alert, null);
+    assert.deepEqual(observation.thresholds, [
+      { ruleId: 'rate', windowMinutes: 5, unit: 'mm/h', threshold: 15, value: 0, quality: 'complete' },
+      { ruleId: 'hour', windowMinutes: 60, unit: 'mm', threshold: 10, value: null, quality: 'missing_telemetry' }
+    ]);
   });
 
   it('persists one alert for a threshold crossing, raises severity once and rearms after dry data', async () => {

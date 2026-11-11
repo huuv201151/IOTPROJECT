@@ -34,6 +34,8 @@ import {
 import { api } from '@/lib/api';
 import { getSocket } from '@/lib/socket';
 import { useTheme, useDemo } from '@/app/providers';
+import { useStationId } from '@/components/layout/AppShell';
+import { RainMonitorPanel } from '@/components/RainMonitorPanel';
 import { DEMO_SCENARIOS } from '@/lib/demo-scenarios';
 import { formatDateTimeVi, formatTimeVi } from '@/lib/utils';
 import {
@@ -44,6 +46,7 @@ import {
 } from '@/lib/weather-calc';
 
 export default function OverviewPage() {
+  const stationId = useStationId();
   const queryClient = useQueryClient();
   const { resolvedTheme } = useTheme();
   const { isDemoMode, demoScenario, setDemoScenario, demoEnvironment, runtimePoints } = useDemo();
@@ -59,7 +62,7 @@ export default function OverviewPage() {
     }
     setIsResettingRain(true);
     try {
-      queryClient.setQueryData(['dashboardSummary'], (prev: any) => {
+      queryClient.setQueryData(['dashboardSummary', stationId], (prev: any) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -75,12 +78,13 @@ export default function OverviewPage() {
         };
       });
 
-      await api.resetRainOnly('RS-ESP32S3-01');
+      await api.resetRainOnly(stationId);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['dashboardSummary'] }),
         queryClient.invalidateQueries({ queryKey: ['rainfall'] }),
         queryClient.invalidateQueries({ queryKey: ['hourlyRain'] }),
-        queryClient.invalidateQueries({ queryKey: ['telemetrySeries'] })
+        queryClient.invalidateQueries({ queryKey: ['telemetrySeries'] }),
+        queryClient.invalidateQueries({ queryKey: ['rain-monitor', stationId, false] })
       ]);
       alert('Đã đặt lại lượng mưa và số nhịp lật về 0 thành công!');
     } catch (err: any) {
@@ -92,22 +96,22 @@ export default function OverviewPage() {
 
   // Fetch unified dashboard summary data
   const { data: summary, isLoading } = useQuery({
-    queryKey: ['dashboardSummary'],
-    queryFn: () => api.getDashboardSummary(),
+    queryKey: ['dashboardSummary', stationId],
+    queryFn: () => api.getDashboardSummary(stationId),
     refetchInterval: 10000
   });
 
   // Fetch historical time series for charts
   const { data: series = [] } = useQuery({
-    queryKey: ['telemetrySeries', timeRange],
-    queryFn: () => api.getMeasurements('RS-ESP32S3-01', timeRange),
+    queryKey: ['telemetrySeries', stationId, timeRange],
+    queryFn: () => api.getMeasurements(stationId, timeRange),
     refetchInterval: 15000
   });
 
   // Fetch hourly rain for rainfall chart
   const { data: hourlyRain = [] } = useQuery({
-    queryKey: ['hourlyRain'],
-    queryFn: () => api.getHourlyRain('RS-ESP32S3-01', 24),
+    queryKey: ['hourlyRain', stationId],
+    queryFn: () => api.getHourlyRain(stationId, 24),
     refetchInterval: 20000
   });
 
@@ -127,8 +131,8 @@ export default function OverviewPage() {
     };
 
     const handleTelemetryUpdate = (data: any) => {
-      if (!data || !data.measurement) return;
-      queryClient.setQueryData(['dashboardSummary'], (prev: any) => {
+      if (data?.deviceId !== stationId || !data.measurement) return;
+      queryClient.setQueryData(['dashboardSummary', stationId], (prev: any) => {
         if (!prev) return prev;
 
 
@@ -149,8 +153,8 @@ export default function OverviewPage() {
     };
 
     const handleRainUpdate = (data: any) => {
-      if (!data || !data.statistics) return;
-      queryClient.setQueryData(['dashboardSummary'], (prev: any) => {
+      if (data?.deviceId !== stationId || !data.statistics) return;
+      queryClient.setQueryData(['dashboardSummary', stationId], (prev: any) => {
         if (!prev) return prev;
 
         return {
@@ -170,7 +174,7 @@ export default function OverviewPage() {
       socket.off('telemetry:broadcast', handleTelemetryUpdate);
       socket.off('rain:broadcast', handleRainUpdate);
     };
-  }, [queryClient]);
+  }, [queryClient, stationId]);
 
   // Biểu đồ tích lũy liên tục: giữ nguyên dữ liệu lịch sử cũ, chỉ nối thêm điểm mới nhất theo mode
   const chartData = useMemo(() => {
@@ -184,14 +188,17 @@ export default function OverviewPage() {
       dewPoint: m.dewPoint ?? calculateDewPoint(m.temperature, m.humidity)
     }));
 
-    if (!runtimePoints || runtimePoints.length === 0) {
+    const stationPoints = stationId === 'RS-ESP32S3-01'
+      ? runtimePoints
+      : runtimePoints.filter((point) => point.source === 'demo');
+    if (stationPoints.length === 0) {
       return baseMapped;
     }
 
-    const firstTime = new Date(runtimePoints[0].timestamp).getTime();
+    const firstTime = new Date(stationPoints[0].timestamp).getTime();
     const historical = baseMapped.filter((p: any) => new Date(p.timestamp).getTime() < firstTime);
-    return [...historical, ...runtimePoints];
-  }, [series, runtimePoints]);
+    return [...historical, ...stationPoints];
+  }, [series, runtimePoints, stationId]);
 
   if (isLoading && !summary) {
     return (
@@ -256,7 +263,7 @@ export default function OverviewPage() {
                 {device?.name || 'Trạm Quan Trắc Khí Tượng & Mưa Đô Thị'}
               </h1>
               <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-cyan-500/15 text-cyan-700 dark:text-cyan-400 border border-cyan-500/30">
-                {device?.deviceId || 'RS-ESP32S3-01'}
+                {device?.deviceId || stationId}
               </span>
             </div>
             <p className="text-xs text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
@@ -336,7 +343,7 @@ export default function OverviewPage() {
           <div className="mt-4 p-3.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center gap-3 text-xs text-cyan-800 dark:text-cyan-300">
             <Radio className="w-4 h-4 shrink-0 text-cyan-500 animate-pulse" />
             <span>
-              <strong>Chờ kết nối từ phần cứng ESP32-S3:</strong> Dữ liệu giả lập đã được xóa sạch. Hệ thống đang lắng nghe bản tin MQTT thực tế qua topic <code className="font-mono bg-cyan-500/20 px-1 py-0.5 rounded">weather/RS-ESP32S3-01/telemetry</code>.
+              <strong>Chờ kết nối từ phần cứng ESP32-S3:</strong> Hệ thống đang lắng nghe bản tin MQTT qua topic <code className="font-mono bg-cyan-500/20 px-1 py-0.5 rounded">weather/{stationId}/telemetry</code>.
             </span>
           </div>
         ) : null}
@@ -370,6 +377,8 @@ export default function OverviewPage() {
           </div>
         </div>
       )}
+
+      <RainMonitorPanel deviceId={stationId} dashboardDemo={isDemoMode} />
 
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         {/* Card 1: Nhiệt độ */}

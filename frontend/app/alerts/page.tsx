@@ -100,6 +100,7 @@ export default function AlertsPage() {
 
   const filteredAlerts = alerts.filter((a: any) => {
     if (filterType === 'all') return true;
+    if (filterType === 'rain') return a.type === 'HEAVY_RAIN' || a.type === 'RAIN_ACCUMULATION';
     if (filterType === 'unread') return !a.isRead;
     if (filterType === 'CRITICAL') return a.severity === 'CRITICAL';
     if (filterType === 'WARNING') return a.severity === 'WARNING';
@@ -139,7 +140,7 @@ export default function AlertsPage() {
       </div>
 
       {/* Alert Rules Section */}
-      <section className="bg-card border border-border rounded-2xl p-5 shadow-sm space-y-4 transition-colors">
+      <section id="alert-rules" className="bg-card border border-border rounded-2xl p-5 shadow-sm space-y-4 transition-colors">
         <div className="flex items-center justify-between border-b border-border pb-3">
           <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <Sliders className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
@@ -230,6 +231,12 @@ export default function AlertsPage() {
               Tất cả
             </button>
             <button
+              onClick={() => setFilterType('rain')}
+              className={`px-3 py-1 rounded-lg ${filterType === 'rain' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 font-bold shadow-sm' : 'text-slate-600 dark:text-slate-400'}`}
+            >
+              Mưa
+            </button>
+            <button
               onClick={() => setFilterType('unread')}
               className={`px-3 py-1 rounded-lg ${filterType === 'unread' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 font-bold shadow-sm' : 'text-slate-600 dark:text-slate-400'}`}
             >
@@ -251,7 +258,7 @@ export default function AlertsPage() {
               <span>Không có sự kiện cảnh báo nào phù hợp với bộ lọc.</span>
             </div>
           ) : (
-            filteredAlerts.map((alert: any) => {
+            filteredAlerts.map((alert: AlertRecord) => {
               const isCrit = alert.severity === 'CRITICAL';
               const isWarn = alert.severity === 'WARNING';
               return (
@@ -286,6 +293,11 @@ export default function AlertsPage() {
                         <span>•</span>
                         <span>Trạm: {alert.deviceId}</span>
                       </div>
+                      {alert.rainEvidence && (
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Cửa sổ đo {formatDateTimeVi(alert.rainEvidence.from)} – {formatDateTimeVi(alert.rainEvidence.to)}
+                        </p>
+                      )}
                     </div>
                   </div>
 

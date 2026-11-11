@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { getSocket } from '@/lib/socket';
@@ -35,10 +36,10 @@ export function RainMonitorPanel({ deviceId, dashboardDemo }: { deviceId: string
   }).format(new Date(value));
   const number = (value: number) => value.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
   return (
-    <section className="space-y-3" aria-label="Theo dõi và cảnh báo mưa">
+    <section id="rain-monitor" className="space-y-3" aria-labelledby="rain-monitor-title">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-base font-semibold">Theo dõi và cảnh báo mưa</h2>
+          <h2 id="rain-monitor-title" className="text-base font-semibold">Theo dõi và cảnh báo mưa</h2>
           <p className="text-xs text-muted-foreground">
             {deviceId}{data && ` · Chốt lúc ${time(data.generatedAt)}`}{data?.demo && ' · Mô phỏng'}
           </p>
@@ -81,18 +82,26 @@ export function RainMonitorPanel({ deviceId, dashboardDemo }: { deviceId: string
             <h3 className="text-sm font-semibold">Ước tính 60 phút tới</h3>
             <p className="mt-2 font-semibold">{data.forecast.estimatedRainMm === null ? 'Chưa có ước tính' : `${number(data.forecast.estimatedRainMm)} mm`}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {data.forecast.method === 'ridge' ? `Ridge · ${data.forecast.modelVersion}` : data.forecast.reason}
+              {data.forecast.method === 'ridge' ? `Ridge đã kiểm định · ${data.forecast.modelVersion}` : data.forecast.reason}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">{time(data.forecast.validFrom)} – {time(data.forecast.validTo)}</p>
           </div>
           <div className={card}>
             <h3 className="text-sm font-semibold">Cảnh báo quan trắc</h3>
-            <p className={`mt-2 font-semibold ${data.observation.alert ? 'text-amber-700 dark:text-amber-300' : ''}`}>
+            <p role="status" className={`mt-2 font-semibold ${data.observation.alert ? 'text-amber-700 dark:text-amber-300' : ''}`}>
               {rainObservationLabel(data.observation)}
             </p>
             {data.observation.alert && <p className="mt-1 text-xs">{formatRainEvidence(data.observation.alert)}</p>}
+            <ul className="space-y-1 text-xs text-muted-foreground">
+              {data.observation.thresholds?.filter((rule) => rule.ruleId !== data.observation.alert?.ruleId).map((rule) => (
+                <li key={rule.ruleId}>
+                  <span>Ngưỡng &gt; {number(rule.threshold)} {rule.unit} trong {rule.windowMinutes} phút</span>
+                  <span className="block">{rule.value === null ? rainQualityLabels[rule.quality] : `Đã đo ${number(rule.value)} ${rule.unit}`}</span>
+                </li>
+              ))}
+            </ul>
             {!data.observation.rulesConfigured && <p className="mt-1 text-xs text-muted-foreground">Trạm chưa bật ngưỡng cảnh báo mưa.</p>}
-            <a href="/alerts" className="mt-2 inline-block text-xs font-medium text-cyan-700 underline dark:text-cyan-300">Lịch sử và ngưỡng cảnh báo</a>
+            <Link href="/alerts#alert-rules" className="mt-2 inline-block text-xs font-medium text-cyan-700 underline dark:text-cyan-300">Lịch sử và ngưỡng cảnh báo</Link>
           </div>
         </div>
       )}
