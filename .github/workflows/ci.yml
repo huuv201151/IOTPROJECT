@@ -36,4 +36,7 @@ jobs:
       - name: Verify shared frontend modules are synchronized
         run: git diff --exit-code -- frontend/shared
       - run: npm run lint
-      - run: npm run build
+      - name: Build backend and exported dashboard
+        run: npm run build --workspace=backend
+        env:
+          RAINSENSE_RENDER_DASHBOARD: '1'

@@ -3,6 +3,9 @@ import { io, Socket } from 'socket.io-client';
 const DEFAULT_REMOTE_SOCKET = 'https://rainsense-backend-dlxg.onrender.com';
 
 function getSocketUrl(): string {
+  if (process.env.NEXT_PUBLIC_DASHBOARD_SAME_ORIGIN === '1' && typeof window !== 'undefined') {
+    return window.location.origin;
+  }
   const envUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
   if (envUrl && envUrl.trim() !== '') {
     if (

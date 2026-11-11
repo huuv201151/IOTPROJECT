@@ -89,7 +89,9 @@ export function RainMonitorPanel({ deviceId, dashboardDemo }: { deviceId: string
             <p className="mt-1 text-xs text-muted-foreground">
               {data.forecast.method === 'ridge' ? `Ridge đã kiểm định · ${data.forecast.modelVersion}` : data.forecast.reason}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">{time(data.forecast.validFrom)} – {time(data.forecast.validTo)}</p>
+            {data.forecast.estimatedRainMm !== null && (
+              <p className="mt-1 text-xs text-muted-foreground">{time(data.forecast.validFrom)} – {time(data.forecast.validTo)}</p>
+            )}
           </div>
           <div className={card}>
             <div className="flex flex-wrap items-center justify-between gap-1">

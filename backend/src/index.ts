@@ -1,5 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import http from 'http';
+import { existsSync } from 'fs';
+import path from 'path';
 import cors from 'cors';
 import { env } from './config/env';
 import { logger } from './utils/logger';
@@ -52,6 +54,12 @@ app.get('/status-page', (req: Request, res: Response) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(renderStatusPageHtml());
 });
+
+const dashboard = path.join(__dirname, 'dashboard');
+if (existsSync(path.join(dashboard, 'overview', 'index.html'))) {
+  app.get('/dashboard', (_req, res) => res.redirect('/dashboard/overview/'));
+  app.use('/dashboard', express.static(dashboard));
+}
 
 // Health check endpoint with EMQX & Aiven connectivity summary
 app.get('/health', (req: Request, res: Response) => {

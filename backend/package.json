@@ -12,6 +12,7 @@
     "pretest": "npm run shared:sync",
     "dev": "tsx watch src/index.ts",
     "build": "npx prisma generate --schema=prisma/schema.prisma && npx tsc",
+    "postbuild": "node scripts/build-dashboard.mjs",
     "start": "node dist/index.js",
     "test:conn": "tsx src/scripts/test-connections.ts",
     "prisma:generate": "prisma generate --schema=prisma/schema.prisma",

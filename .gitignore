@@ -6,6 +6,7 @@ node_modules/
 
 # Build artifacts & caches
 .next/
+.dashboard-export/
 dist/
 */dist/
 build/

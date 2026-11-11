@@ -2,6 +2,8 @@
 
 Khối **Theo dõi và cảnh báo mưa** trên trang **Tổng quan** và **Phân tích lượng mưa** hiển thị lượng tích lũy và tốc độ trung bình trong 15 phút, 1 giờ, 3 giờ và 24 giờ của trạm đang chọn. Khối này có diễn biến khí áp 3 giờ, ước tính lượng mưa 60 phút tới, ngưỡng đang áp dụng và trạng thái cảnh báo quan trắc. Lịch sử có bộ lọc **Mưa** để xem các sự kiện và thời gian của cửa sổ đo.
 
+Render phục vụ dashboard của cùng bản phát hành tại đường dẫn `/dashboard/overview/`. Dashboard kết nối API và Socket.IO trên cùng tên miền Render.
+
 Trong **Cảnh báo & Sự kiện**, quản trị viên có thể bật quy tắc **Lượng mưa tích lũy 60 phút**, nhập ngưỡng theo mm và chọn mức độ. Quy tắc cường độ hiện có dùng mm/h trung bình trong 5 phút. Backend kiểm tra mỗi 5 phút, chỉ lưu và gửi sự kiện khi vượt ngưỡng lần đầu hoặc mức độ tăng. Một giờ khô có đủ dữ liệu sẽ đặt lại trạng thái cho đợt sau.
 
 Cảnh báo tự động dựa trên số đo đạt điều kiện chất lượng của trạm. Phần mềm kiểm tra thời gian sự kiện, độ phủ bản tin và các khoảng thử nước. Dữ liệu mô phỏng có nhãn riêng. Cảnh báo quan trắc lưu cửa sổ đo, ngưỡng, nguồn và phiên bản quy tắc trong lịch sử. Người dùng có thể mở **Xem mô phỏng** để thử với 16 mm trong 60 phút và ngưỡng 15 mm. Kịch bản chỉ đọc và không tạo cảnh báo thật.

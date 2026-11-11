@@ -4,9 +4,8 @@ services:
     runtime: node
     plan: free
     region: singapore
-    rootDir: backend
-    buildCommand: npm install --include=dev && npm run build
-    startCommand: npm run start
+    buildCommand: npm ci --include=dev && npm run build --workspace=backend
+    startCommand: npm run start --workspace=backend
     healthCheckPath: /health
     autoDeploy: true
     envVars:

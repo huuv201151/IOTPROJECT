@@ -3,6 +3,9 @@ import type { RainMonitorSnapshot } from '@/shared/rain-monitor';
 const DEFAULT_REMOTE_BACKEND = 'https://rainsense-backend-dlxg.onrender.com';
 
 export function getApiBase(): string {
+  if (process.env.NEXT_PUBLIC_DASHBOARD_SAME_ORIGIN === '1' && typeof window !== 'undefined') {
+    return window.location.origin;
+  }
   const envUrl = process.env.NEXT_PUBLIC_API_URL;
   if (envUrl && envUrl.trim() !== '') {
     // If running in browser on localhost or server-side, respect envUrl
