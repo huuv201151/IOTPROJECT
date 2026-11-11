@@ -55,9 +55,13 @@ app.get('/status-page', (req: Request, res: Response) => {
   res.send(renderStatusPageHtml());
 });
 
-const dashboard = path.join(__dirname, 'dashboard');
-if (existsSync(path.join(dashboard, 'overview', 'index.html'))) {
-  app.get('/dashboard', (_req, res) => res.redirect('/dashboard/overview/'));
+const dashboard = path.resolve(__dirname, '..', 'dist', 'dashboard');
+const dashboardAvailable = existsSync(path.join(dashboard, 'overview', 'index.html'));
+app.get('/dashboard', (_req, res) => {
+  if (dashboardAvailable) return res.redirect('/dashboard/overview/');
+  return res.status(503).send('Bản phát hành RainSense chưa có dashboard.');
+});
+if (dashboardAvailable) {
   app.use('/dashboard', express.static(dashboard));
 }
 
@@ -71,6 +75,7 @@ app.get('/health', (req: Request, res: Response) => {
     service: 'RainSense IoT Backend',
     mode: env.DEMO_MODE ? 'DEMO' : 'LIVE',
     timestamp: new Date().toISOString(),
+    dashboard: { available: dashboardAvailable, revision: process.env.RENDER_GIT_COMMIT ?? null },
     database: {
       connected: dbInfo.connected,
       provider: dbInfo.provider,
