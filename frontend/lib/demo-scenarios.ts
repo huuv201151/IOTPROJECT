@@ -11,6 +11,11 @@ export interface DemoScenarioConfig {
   baseHumidity: number; // %
   basePressure: number; // hPa
   pressureTrendCategory: 'STABLE' | 'FALLING' | 'RAPIDLY_FALLING';
+  todayMm: number;
+  totalTipsToday: number;
+  currentRateMmH: number;
+  maxObservedRateMmH: number;
+  last24hMm: number;
 }
 
 export const DEMO_SCENARIOS: Record<DemoScenarioId, DemoScenarioConfig> = {
@@ -24,7 +29,12 @@ export const DEMO_SCENARIOS: Record<DemoScenarioId, DemoScenarioConfig> = {
     baseTemp: 29.4,
     baseHumidity: 62.5,
     basePressure: 1013.8,
-    pressureTrendCategory: 'STABLE'
+    pressureTrendCategory: 'STABLE',
+    todayMm: 0.0,
+    totalTipsToday: 0,
+    currentRateMmH: 0.0,
+    maxObservedRateMmH: 0.0,
+    last24hMm: 0.0
   },
   moderate: {
     id: 'moderate',
@@ -36,7 +46,12 @@ export const DEMO_SCENARIOS: Record<DemoScenarioId, DemoScenarioConfig> = {
     baseTemp: 26.8,
     baseHumidity: 78.5,
     basePressure: 1008.2,
-    pressureTrendCategory: 'FALLING'
+    pressureTrendCategory: 'FALLING',
+    todayMm: 5.12,
+    totalTipsToday: 8,
+    currentRateMmH: 5.12,
+    maxObservedRateMmH: 8.5,
+    last24hMm: 10.24
   },
   high: {
     id: 'high',
@@ -48,7 +63,12 @@ export const DEMO_SCENARIOS: Record<DemoScenarioId, DemoScenarioConfig> = {
     baseTemp: 24.6,
     baseHumidity: 88.6,
     basePressure: 1003.4,
-    pressureTrendCategory: 'RAPIDLY_FALLING'
+    pressureTrendCategory: 'RAPIDLY_FALLING',
+    todayMm: 16.0,
+    totalTipsToday: 25,
+    currentRateMmH: 12.8,
+    maxObservedRateMmH: 24.0,
+    last24hMm: 38.4
   },
   critical: {
     id: 'critical',
@@ -60,7 +80,12 @@ export const DEMO_SCENARIOS: Record<DemoScenarioId, DemoScenarioConfig> = {
     baseTemp: 23.2,
     baseHumidity: 94.6,
     basePressure: 998.2,
-    pressureTrendCategory: 'RAPIDLY_FALLING'
+    pressureTrendCategory: 'RAPIDLY_FALLING',
+    todayMm: 48.0,
+    totalTipsToday: 75,
+    currentRateMmH: 38.4,
+    maxObservedRateMmH: 65.0,
+    last24hMm: 115.2
   }
 };
 

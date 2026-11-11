@@ -81,6 +81,26 @@ describe('Rain monitoring and 60-minute estimate', () => {
     assert.equal(Date.parse(demo.forecast.validTo) - Date.parse(demo.forecast.validFrom), 60 * MINUTE);
   });
 
+  it('adapts rain monitoring and alerts dynamically across low, moderate, and critical demo scenarios', () => {
+    const low = demoRainMonitor(deviceId, 'Asia/Ho_Chi_Minh', 'low');
+    assert.equal(low.observation.status, 'dry');
+    assert.equal(low.observation.alert, null);
+    assert.equal(low.windows.find((w) => w.minutes === 60)?.rainfallMm, 0);
+    assert.equal(low.forecast.status, 'dry_baseline');
+
+    const moderate = demoRainMonitor(deviceId, 'Asia/Ho_Chi_Minh', 'moderate');
+    assert.equal(moderate.observation.status, 'rain');
+    assert.equal(moderate.observation.alert, null);
+    assert.equal(moderate.windows.find((w) => w.minutes === 60)?.rainfallMm, 5.12);
+    assert.equal(moderate.forecast.estimatedRainMm, 5.12);
+
+    const critical = demoRainMonitor(deviceId, 'Asia/Ho_Chi_Minh', 'critical');
+    assert.equal(critical.observation.status, 'heavy');
+    assert.equal(critical.observation.alert?.severity, 'CRITICAL');
+    assert.equal(critical.observation.alert?.value, 48);
+    assert.equal(critical.windows.find((w) => w.minutes === 60)?.rainfallMm, 48);
+  });
+
   it('distinguishes dry observations, outages, water tests without tips and simulation', () => {
     const dry = buildRainMonitor(input, [], at, 'UTC');
     assert.equal(dry.observation.status, 'dry');

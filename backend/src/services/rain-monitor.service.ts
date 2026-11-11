@@ -74,36 +74,126 @@ export function buildRainMonitor(
   };
 }
 
-export function demoRainMonitor(deviceId: string, timezone = 'Asia/Ho_Chi_Minh'): RainMonitorSnapshot {
-  const now = new Date('2026-11-09T07:00:00.000Z');
+export function demoRainMonitor(
+  deviceId: string,
+  timezone = 'Asia/Ho_Chi_Minh',
+  scenario: string = 'high',
+  referenceTime?: Date
+): RainMonitorSnapshot {
+  const now = referenceTime ?? new Date('2026-11-09T07:00:00.000Z');
   const stamp = (minutes: number) => new Date(now.getTime() - minutes * MINUTE).toISOString();
+
+  let baseP = 1009.6;
+  let pSlope = 0.01;
+  let rawEvents: { minutes: number; tips: number }[] = [];
+  let ruleSeverity: 'INFO' | 'WARNING' | 'CRITICAL' = 'WARNING';
+  let forecastReasonOverride: string | null = null;
+
+  switch (scenario) {
+    case 'low': {
+      // Demo 1: Thấp (An toàn) - Tạnh ráo, khí áp ổn định, không mưa
+      baseP = 1013.8;
+      pSlope = -0.0005; // +0.1 hPa / 180 min
+      rawEvents = [];
+      ruleSeverity = 'WARNING';
+      forecastReasonOverride = 'Khí quyển ổn định (1.013,8 hPa, +0,1 hPa/3h). Không có tín hiệu mưa hình thành trong 60 phút tới.';
+      break;
+    }
+    case 'moderate': {
+      // Demo 2: Trung bình (Cần lưu ý) - Mưa rải rác nhẹ, chưa vượt ngưỡng cảnh báo 15 mm
+      baseP = 1008.2;
+      pSlope = 1.6 / 180; // -1.6 hPa / 180 min
+      rawEvents = [
+        { minutes: 360, tips: 4 }, // 2.56 mm (trong 24h)
+        { minutes: 120, tips: 4 }, // 2.56 mm (trong 3h)
+        { minutes: 40, tips: 6 },  // 3.84 mm (trong 1h)
+        { minutes: 8, tips: 2 }    // 1.28 mm (trong 15m)
+      ];
+      // 15m: 1.28 mm (5.12 mm/h TB)
+      // 60m: 5.12 mm (5.12 mm/h TB) -> dưới ngưỡng 15 mm
+      // 3h: 7.68 mm, 24h: 10.24 mm
+      ruleSeverity = 'WARNING';
+      forecastReasonOverride = 'Áp suất khí quyển giảm nhẹ (-1,6 hPa/3h). Dự báo mưa rào ngắt quãng 5–6 mm trong 60 phút tới, chưa có nguy cơ ngập.';
+      break;
+    }
+    case 'critical': {
+      // Demo 4: Rất cao (Nguy hiểm) - Mưa xối xả cực lớn do áp thấp/bão, vượt mức khẩn cấp
+      baseP = 998.2;
+      pSlope = 5.8 / 180; // -5.8 hPa / 180 min
+      rawEvents = [
+        { minutes: 300, tips: 60 }, // 38.4 mm (trong 24h)
+        { minutes: 120, tips: 45 }, // 28.8 mm (trong 3h)
+        { minutes: 45, tips: 35 },  // 22.4 mm (trong 1h)
+        { minutes: 20, tips: 25 },  // 16.0 mm (trong 1h)
+        { minutes: 5, tips: 15 }    // 9.6 mm (trong 15m: 38.4 mm/h)
+      ];
+      // 15m: 9.6 mm (38.4 mm/h TB)
+      // 60m: 48.0 mm (48.0 mm/h TB) -> vượt xa 15 mm!
+      // 3h: 76.8 mm, 24h: 115.2 mm
+      ruleSeverity = 'CRITICAL';
+      forecastReasonOverride = 'Áp thấp khí quyển sâu (-5,8 hPa/3h). CẢNH BÁO KHẨN CẤP: Lượng mưa tích lũy đặc biệt lớn, nguy cơ ngập sâu diện rộng!';
+      break;
+    }
+    case 'high':
+    default: {
+      // Demo 3: Cao (Cảnh báo ngập) - Mưa to vượt ngưỡng cảnh báo 15 mm (16 mm / 60 min, -1.8 hPa)
+      // Khớp 100% với fixture mẫu gốc
+      baseP = 1009.6;
+      pSlope = 0.01;
+      rawEvents = [
+        { minutes: 300, tips: 20 },
+        { minutes: 110, tips: 15 },
+        { minutes: 45, tips: 20 },
+        { minutes: 6, tips: 5 }
+      ];
+      ruleSeverity = 'WARNING';
+      forecastReasonOverride = 'Khí áp giảm nhanh (-1,8 hPa/3h), mưa to duy trì. CẢNH BÁO: Nguy cơ ngập úng cục bộ tại các điểm trũng thấp trong 60 phút tới.';
+      break;
+    }
+  }
+
   const measurements: MeasurementRecord[] = Array.from({ length: 1441 }, (_, minutes) => ({
     id: `m${minutes}`, deviceId, messageId: `fixture-${minutes}`, timestamp: stamp(minutes), createdAt: stamp(minutes),
-    temperature: 26, humidity: 90, pressure: roundRain(1009.6 + Math.min(minutes, 180) * 0.01), wifiRssi: -50, uptime: 10
+    temperature: scenario === 'critical' ? 23.2 : scenario === 'moderate' ? 26.8 : scenario === 'low' ? 29.4 : 24.6,
+    humidity: scenario === 'critical' ? 95 : scenario === 'moderate' ? 78 : scenario === 'low' ? 62 : 90,
+    pressure: roundRain(baseP + Math.min(minutes, 180) * pSlope), wifiRssi: -50, uptime: 10
   }));
-  const events = [{ minutes: 45, tips: 20 }, { minutes: 6, tips: 5 }].map(({ minutes, tips }) => ({
+
+  const events = rawEvents.map(({ minutes, tips }) => ({
     id: `e${minutes}`, eventId: `fixture-rain-${minutes}`, deviceId, timestamp: stamp(minutes),
     createdAt: stamp(minutes), tipCount: tips, rainfallMm: tips * 0.64, calibrationFactor: 0.64,
     timingQuality: 'device_tip' as const
   }));
+
   const rule: AlertRuleRecord = {
     id: 'demo-60m', deviceId, alertType: 'RAIN_ACCUMULATION', threshold: 15,
-    comparison: 'GREATER_THAN', severity: 'WARNING', enabled: true, createdAt: stamp(0), updatedAt: stamp(0)
+    comparison: 'GREATER_THAN', severity: ruleSeverity, enabled: true, createdAt: stamp(0), updatedAt: stamp(0)
   };
-  return buildRainMonitor({ deviceId, measurements, events, tests: [], maxGapMs: 2 * MINUTE }, [rule], now, timezone, true);
+
+  const snapshot = buildRainMonitor({ deviceId, measurements, events, tests: [], maxGapMs: 2 * MINUTE }, [rule], now, timezone, true);
+  if (forecastReasonOverride && snapshot.forecast.status !== 'insufficient') {
+    snapshot.forecast.reason = forecastReasonOverride;
+  }
+  return snapshot;
 }
 
 export class RainMonitorService {
-  async getSnapshot(deviceId: string, now = new Date(), demo = env.DEMO_MODE): Promise<RainMonitorSnapshot | null> {
+  async getSnapshot(
+    deviceId: string,
+    now?: Date,
+    demo = env.DEMO_MODE,
+    scenario?: string
+  ): Promise<RainMonitorSnapshot | null> {
     const device = await dataStore.getDevice(deviceId);
     if (!device) return null;
     const timezone = normalizeStationTimezone(device.timezone);
-    if (demo) return demoRainMonitor(deviceId, timezone);
-    const cutoff = now.getTime();
+    if (demo) return demoRainMonitor(deviceId, timezone, scenario, now);
+    const evaluationTime = now ?? new Date();
+    const cutoff = evaluationTime.getTime();
     const config = await dataStore.getConfig(deviceId);
     const maxGapMs = rainGapMs(config?.mqttInterval);
     const from = new Date(cutoff - 1440 * MINUTE - maxGapMs).toISOString();
-    const to = now.toISOString();
+    const to = evaluationTime.toISOString();
     const { value, source } = await withReadDiagnostics(() => Promise.all([
       dataStore.getMeasurements(deviceId, { from, to, limit: 20000 }),
       dataStore.getRainEvents(deviceId, from, to),
@@ -116,7 +206,7 @@ export class RainMonitorService {
       deviceId, maxGapMs, tests,
       measurements: measurements.filter((row) => availableAt(row, cutoff)),
       events: classifyRainEvents(events.filter((row) => availableAt(row, cutoff)), tests)
-    }, rules, now, timezone);
+    }, rules, evaluationTime, timezone);
   }
 
   private running = false;

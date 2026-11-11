@@ -209,8 +209,21 @@ export default function OverviewPage() {
 
   const device = summary?.device;
   const latest = summary?.latestMeasurement;
-  const rainfall = summary?.rainfall;
+  const rawRainfall = summary?.rainfall;
   const health = summary?.systemHealth;
+
+  const activeScenario = DEMO_SCENARIOS[demoScenario];
+  const rainfall = isDemoMode && activeScenario
+    ? {
+        todayMm: activeScenario.todayMm,
+        totalTipsToday: activeScenario.totalTipsToday,
+        calibrationFactor: 0.64,
+        currentRateMmH: activeScenario.currentRateMmH,
+        last1hMm: activeScenario.todayMm,
+        last24hMm: activeScenario.last24hMm,
+        testTodayMm: 0
+      }
+    : rawRainfall;
 
   const effectiveTemp = isDemoMode ? demoEnvironment.temperature : latest?.temperature;
   const effectiveHumid = isDemoMode ? demoEnvironment.humidity : latest?.humidity;
@@ -342,7 +355,7 @@ export default function OverviewPage() {
           <div className="flex items-center gap-2">
             <Activity className="w-4 h-4 text-amber-600 dark:text-amber-400 animate-pulse shrink-0" />
             <span className="text-amber-900 dark:text-amber-200">
-              <strong>CHẾ ĐỘ DEMO:</strong> Đang mô phỏng <strong>{DEMO_SCENARIOS[demoScenario].code}: {DEMO_SCENARIOS[demoScenario].name}</strong>. Thông số tự động dao động nhẹ mỗi 10 giây (giống Live mode). Lượng mưa luôn đo từ gàu lật thực tế.
+              <strong>CHẾ ĐỘ DEMO:</strong> Đang mô phỏng <strong>{DEMO_SCENARIOS[demoScenario].code}: {DEMO_SCENARIOS[demoScenario].name}</strong>. Thông số khí tượng & cảnh báo mưa AI tự động đồng bộ theo từng mức nguy cơ.
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-1.5 shrink-0">

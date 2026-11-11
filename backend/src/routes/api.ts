@@ -49,7 +49,9 @@ apiRouter.get('/devices/:id/rain-monitor', async (req, res) => {
   const station = deviceIdSchema.safeParse(req.params.id);
   if (!station.success) return res.status(400).json({ success: false, error: 'Mã trạm không hợp lệ' });
   try {
-    const data = await rainMonitorService.getSnapshot(station.data, new Date(), req.query.demo === '1' ? true : undefined);
+    const isDemo = req.query.demo === '1' ? true : undefined;
+    const scenario = typeof req.query.scenario === 'string' ? req.query.scenario : undefined;
+    const data = await rainMonitorService.getSnapshot(station.data, new Date(), isDemo, scenario);
     if (!data) return res.status(404).json({ success: false, error: 'Không tìm thấy trạm' });
     return res.json({ success: true, data });
   } catch {

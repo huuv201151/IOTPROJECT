@@ -86,8 +86,11 @@ export const api = {
   getEnvironmentalStats: (id: string) => request<any>(`/api/devices/${id}/statistics`),
 
   getRainfallStats: (id: string) => request<any>(`/api/devices/${id}/rainfall`),
-  getRainMonitor: (id: string, demo = false) =>
-    request<RainMonitorSnapshot>(`/api/devices/${encodeURIComponent(id)}/rain-monitor${demo ? '?demo=1' : ''}`),
+  getRainMonitor: (id: string, demo = false, scenario?: string) => {
+    let q = demo ? '?demo=1' : '';
+    if (demo && scenario) q += `&scenario=${encodeURIComponent(scenario)}`;
+    return request<RainMonitorSnapshot>(`/api/devices/${encodeURIComponent(id)}/rain-monitor${q}`);
+  },
   getHourlyRain: (id: string, hours: number = 24) =>
     request<any[]>(`/api/devices/${id}/hourly-rain?hours=${hours}`),
   getDailyRain: (id: string, days: number = 7) =>

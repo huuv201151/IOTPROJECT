@@ -81,6 +81,21 @@ export default function RainfallPage() {
     refetchInterval: 10000
   });
 
+  const activeScenario = DEMO_SCENARIOS[demoScenario];
+  const effectiveStats = isDemoMode && activeScenario
+    ? {
+        ...(stats || {}),
+        todayMm: activeScenario.todayMm,
+        totalTipsToday: activeScenario.totalTipsToday,
+        currentRateMmH: activeScenario.currentRateMmH,
+        maxObservedRateMmH: activeScenario.maxObservedRateMmH,
+        rolling24hMm: activeScenario.last24hMm,
+        calibrationFactor: 0.64,
+        testTodayMm: 0,
+        recordedTodayMm: activeScenario.todayMm
+      }
+    : stats;
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[500px] space-y-4">
@@ -115,10 +130,10 @@ export default function RainfallPage() {
         <div className="flex items-center gap-2">
           <span className="px-3 py-1 rounded-full text-xs font-semibold bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 flex items-center gap-1.5">
             <Waves className="w-3.5 h-3.5" />
-            <span>{(stats?.currentRateMmH ?? 0) > 0 ? 'Có nước qua gầu — chưa xác minh mưa' : 'Chưa ghi nhận nhịp ngoài thử nước gần đây'}</span>
+            <span>{(effectiveStats?.currentRateMmH ?? 0) > 0 ? 'Có mưa ghi nhận qua gầu lật' : 'Chưa ghi nhận mưa gần đây'}</span>
           </span>
           <span className="px-3 py-1 rounded-full text-xs font-mono bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300">
-            Hiệu chuẩn: {stats?.calibrationFactor ?? 0.64} mm/lần lật
+            Hiệu chuẩn: {effectiveStats?.calibrationFactor ?? 0.64} mm/lần lật
           </span>
           <button
             type="button"
@@ -138,7 +153,7 @@ export default function RainfallPage() {
           <div className="flex items-center gap-2">
             <Activity className="w-4 h-4 text-amber-600 dark:text-amber-400 animate-pulse shrink-0" />
             <span className="text-amber-900 dark:text-amber-200">
-              <strong>CHẾ ĐỘ DEMO:</strong> Đang mô phỏng <strong>{DEMO_SCENARIOS[demoScenario].code}: {DEMO_SCENARIOS[demoScenario].name}</strong>. Thông số tự động dao động nhẹ mỗi 10 giây (giống Live mode). Lượng mưa luôn đo từ gàu lật thực tế.
+              <strong>CHẾ ĐỘ DEMO:</strong> Đang mô phỏng <strong>{DEMO_SCENARIOS[demoScenario].code}: {DEMO_SCENARIOS[demoScenario].name}</strong>. Cường độ mưa & cảnh báo AI đồng bộ theo từng mức nguy cơ.
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-1.5 shrink-0">
@@ -159,7 +174,7 @@ export default function RainfallPage() {
         </div>
       )}
 
-      <p className="text-sm text-muted-foreground">Tổng đã loại thử nước: {stats?.todayMm?.toFixed(2) ?? '0.00'} mm. Nước thử hôm nay: {stats?.testTodayMm?.toFixed(2) ?? '0.00'} mm ({stats?.testTipsToday ?? 0} nhịp). Tổng ghi nhận gồm thử: {stats?.recordedTodayMm?.toFixed(2) ?? '0.00'} mm. Phần còn lại chưa xác minh là mưa tự nhiên.</p>
+      <p className="text-sm text-muted-foreground">Tổng lượng mưa hôm nay: {effectiveStats?.todayMm?.toFixed(2) ?? '0.00'} mm ({effectiveStats?.totalTipsToday ?? 0} nhịp lật). 24 giờ qua: {effectiveStats?.rolling24hMm?.toFixed(2) ?? '0.00'} mm.</p>
       {/* A. THỐNG KÊ LƯỢNG MƯA TÍCH LŨY */}
       <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <div className="bg-card border border-border rounded-xl p-4 shadow-sm transition-colors">
@@ -167,10 +182,10 @@ export default function RainfallPage() {
             Hôm nay (00:00 - nay)
           </span>
           <div className="text-2xl font-bold font-mono text-cyan-600 dark:text-cyan-400">
-            {stats?.todayMm?.toFixed(2) ?? '0.00'} <span className="text-xs font-normal text-slate-400">mm</span>
+            {effectiveStats?.todayMm?.toFixed(2) ?? '0.00'} <span className="text-xs font-normal text-slate-400">mm</span>
           </div>
           <span className="text-[11px] text-slate-500 mt-1 block">
-            {stats?.totalTipsToday ?? 0} nhịp lật
+            {effectiveStats?.totalTipsToday ?? 0} nhịp lật
           </span>
         </div>
 
@@ -179,7 +194,7 @@ export default function RainfallPage() {
             Hôm qua
           </span>
           <div className="text-2xl font-bold font-mono text-slate-800 dark:text-slate-200">
-            {stats?.yesterdayMm?.toFixed(2) ?? '0.00'} <span className="text-xs font-normal text-slate-400">mm</span>
+            {effectiveStats?.yesterdayMm?.toFixed(2) ?? '0.00'} <span className="text-xs font-normal text-slate-400">mm</span>
           </div>
           <span className="text-[11px] text-slate-500 mt-1 block">Cả ngày hôm qua</span>
         </div>
@@ -189,7 +204,7 @@ export default function RainfallPage() {
             24 giờ trượt
           </span>
           <div className="text-2xl font-bold font-mono text-cyan-600 dark:text-cyan-300">
-            {stats?.rolling24hMm?.toFixed(2) ?? '0.00'} <span className="text-xs font-normal text-slate-400">mm</span>
+            {effectiveStats?.rolling24hMm?.toFixed(2) ?? '0.00'} <span className="text-xs font-normal text-slate-400">mm</span>
           </div>
           <span className="text-[11px] text-slate-500 mt-1 block">Cửa sổ 24h gần nhất</span>
         </div>
@@ -199,7 +214,7 @@ export default function RainfallPage() {
             7 ngày qua
           </span>
           <div className="text-2xl font-bold font-mono text-slate-800 dark:text-slate-200">
-            {stats?.last7DaysMm?.toFixed(2) ?? '0.00'} <span className="text-xs font-normal text-slate-400">mm</span>
+            {effectiveStats?.last7DaysMm?.toFixed(2) ?? '0.00'} <span className="text-xs font-normal text-slate-400">mm</span>
           </div>
           <span className="text-[11px] text-slate-500 mt-1 block">Tổng 7 ngày gần đây</span>
         </div>
@@ -209,7 +224,7 @@ export default function RainfallPage() {
             Tháng này
           </span>
           <div className="text-2xl font-bold font-mono text-slate-900 dark:text-slate-100">
-            {stats?.currentMonthMm?.toFixed(2) ?? '0.00'} <span className="text-xs font-normal text-slate-400">mm</span>
+            {effectiveStats?.currentMonthMm?.toFixed(2) ?? '0.00'} <span className="text-xs font-normal text-slate-400">mm</span>
           </div>
           <span className="text-[11px] text-slate-500 mt-1 block">Từ ngày 1 đầu tháng</span>
         </div>
@@ -219,10 +234,10 @@ export default function RainfallPage() {
             Tổng vòng đời
           </span>
           <div className="text-2xl font-bold font-mono text-indigo-600 dark:text-indigo-400">
-            {stats?.lifetimeMm?.toFixed(2) ?? '0.00'} <span className="text-xs font-normal text-slate-400">mm</span>
+            {effectiveStats?.lifetimeMm?.toFixed(2) ?? '0.00'} <span className="text-xs font-normal text-slate-400">mm</span>
           </div>
           <span className="text-[11px] text-slate-500 mt-1 block">
-            {stats?.lifetimeTips ?? 0} nhịp tổng
+            {effectiveStats?.lifetimeTips ?? 0} nhịp tổng
           </span>
         </div>
       </section>
@@ -237,7 +252,7 @@ export default function RainfallPage() {
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-4xl font-extrabold font-mono text-cyan-600 dark:text-cyan-400">
-              {stats?.currentRateMmH?.toFixed(1) ?? '0.0'}
+              {effectiveStats?.currentRateMmH?.toFixed(1) ?? '0.0'}
             </span>
             <span className="text-sm font-bold text-slate-400">mm/h</span>
           </div>
@@ -254,12 +269,12 @@ export default function RainfallPage() {
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-4xl font-extrabold font-mono text-amber-600 dark:text-amber-400">
-              {stats?.maxObservedRateMmH?.toFixed(1) ?? '0.0'}
+              {effectiveStats?.maxObservedRateMmH?.toFixed(1) ?? '0.0'}
             </span>
             <span className="text-sm font-bold text-slate-400">mm/h</span>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800">
-            Thời điểm đỉnh: {stats?.timeOfMaxRate ? formatTimeVi(stats.timeOfMaxRate) : 'Chưa có mưa'}
+            Thời điểm đỉnh: {effectiveStats?.timeOfMaxRate ? formatTimeVi(effectiveStats.timeOfMaxRate) : 'Chưa có mưa'}
           </p>
         </div>
 
@@ -272,16 +287,16 @@ export default function RainfallPage() {
           <div className="space-y-1.5 text-xs text-slate-700 dark:text-slate-300 pt-1">
             <div className="flex justify-between">
               <span className="text-slate-500 dark:text-slate-400">Tổng số xung lật (Lifetime):</span>
-              <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{stats?.lifetimeTips ?? 0}</span>
+              <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{effectiveStats?.lifetimeTips ?? 0}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-500 dark:text-slate-400">Hệ số hiệu chuẩn trạm:</span>
-              <span className="font-mono font-bold text-cyan-600 dark:text-cyan-400">{stats?.calibrationFactor ?? 0.25} mm/tip</span>
+              <span className="font-mono font-bold text-cyan-600 dark:text-cyan-400">{effectiveStats?.calibrationFactor ?? 0.25} mm/tip</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-500 dark:text-slate-400">Lần lật gần nhất:</span>
               <span className="font-mono text-slate-800 dark:text-slate-200">
-                {stats?.lastTipTimestamp ? formatDateTimeVi(stats.lastTipTimestamp) : 'Chưa ghi nhận'}
+                {effectiveStats?.lastTipTimestamp ? formatDateTimeVi(effectiveStats.lastTipTimestamp) : 'Chưa ghi nhận'}
               </span>
             </div>
           </div>
