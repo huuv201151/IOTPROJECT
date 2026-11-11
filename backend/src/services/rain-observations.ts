@@ -51,7 +51,8 @@ export function rainWindow(input: RainObservations, minutes: RainWindowMinutes, 
   // must have its matching native measurement before it can drive a station alert.
   const prefix = `rain-${input.deviceId}-`;
   if (events.some((event) => event.timingQuality === 'telemetry_interval' && event.eventId.startsWith(prefix)
-    && !nativeMessages.has(event.eventId.slice(prefix.length).replace(/-\d+$/, '')))) return unavailable('mixed_station');
+    && !nativeMessages.has(event.eventId.slice(prefix.length).replace(/-\d+$/, ''))
+    && !nativeMessages.has(event.eventId.slice(prefix.length).replace(/-\d+$/, '').replace(/-def$/, '')))) return unavailable('mixed_station');
   if (events.some((event) => event.timingQuality === 'telemetry_interval' && Date.parse(event.timestamp) >= end)) return unavailable('uncertain_tips');
   const times = Array.from(new Set(native.map((row) => row.timestamp)));
   const summary = summarizeRainWindow(events, times, new Date(start), new Date(end), '', input.maxGapMs);

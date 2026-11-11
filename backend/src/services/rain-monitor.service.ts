@@ -210,6 +210,7 @@ export class RainMonitorService {
       const measurements: MeasurementRecord[] = [];
       for (const list of measurementsArr) {
         for (const row of list) {
+          if (!demo && row.messageId.startsWith('sim-')) continue;
           const canonicalId = row.messageId.replace(/-def$/, '');
           if (seenMsg.has(canonicalId)) continue;
           seenMsg.add(canonicalId);
