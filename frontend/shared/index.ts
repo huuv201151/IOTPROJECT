@@ -10,3 +10,4 @@ export * from './schemas/alert.schema';
 
 export * from './utils/weather-calc';
 export * from './utils/time';
+export * from './utils/station-alias';

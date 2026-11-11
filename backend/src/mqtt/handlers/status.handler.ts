@@ -2,6 +2,7 @@ import { dataStore } from '../../db/store';
 import { emitDeviceStatus } from '../../socket/io';
 import { logger } from '../../utils/logger';
 import { env } from '../../config/env';
+import { normalizeStationId } from '../../shared/utils/station-alias';
 
 export async function handleStatusMessage(topic: string, rawPayload: Buffer | string) {
   try {
@@ -9,7 +10,7 @@ export async function handleStatusMessage(topic: string, rawPayload: Buffer | st
     const parts = topic.split('/');
     const stationIdFromTopic = parts[1] || env.DEFAULT_STATION_ID;
 
-    let deviceId = stationIdFromTopic;
+    let rawDeviceId = stationIdFromTopic;
     let isOnline = true;
     let wifiRssi: number | undefined;
     let uptime: number | undefined;
@@ -21,7 +22,7 @@ export async function handleStatusMessage(topic: string, rawPayload: Buffer | st
       try {
         const json = JSON.parse(rawStr);
         if (typeof json === 'object' && json !== null) {
-          deviceId = json.deviceId || json.device_id || stationIdFromTopic;
+          rawDeviceId = json.deviceId || json.device_id || stationIdFromTopic;
           isOnline = json.status === 'online';
           wifiRssi = json.wifiRssi ?? json.wifi_rssi_dbm;
           uptime = json.uptime ?? json.uptime_ms;
@@ -32,10 +33,12 @@ export async function handleStatusMessage(topic: string, rawPayload: Buffer | st
       }
     }
 
+    const deviceId = normalizeStationId(rawDeviceId, topic, env.DEFAULT_STATION_ID);
+
     // Auto-create/ensure device in database
     await dataStore.upsertDevice({
       deviceId,
-      name: `Trạm ${stationIdFromTopic}`,
+      name: `Trạm ${deviceId}`,
       location: 'Trạm khí tượng tự động'
     });
 

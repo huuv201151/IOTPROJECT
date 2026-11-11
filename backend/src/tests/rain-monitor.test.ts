@@ -117,6 +117,13 @@ describe('Rain monitoring and 60-minute estimate', () => {
     assert.equal(rainWindow({ ...input, measurements: simulated }, 15, at.getTime()).quality, 'simulation');
     const mirrored = [{ ...measurements[0], messageId: 'other-station-def' }, ...measurements.slice(1)];
     assert.equal(rainWindow({ ...input, measurements: mirrored }, 15, at.getTime()).quality, 'mixed_station');
+
+    // Simulator events from previous demo runs do not contaminate live hardware rainfall with test_water
+    const demoEvent: RainEventRecord = { ...event(-10, 5, 0.64, 'sim-demo'), dataKind: 'test', testNote: 'Dữ liệu giả lập' };
+    const realEvent: RainEventRecord = event(-5, 10, 0.64, 'real-tip');
+    const windowWithSim = rainWindow({ ...input, events: [demoEvent, realEvent] }, 15, at.getTime());
+    assert.equal(windowWithSim.quality, 'complete');
+    assert.equal(windowWithSim.rainfallMm, 6.4);
   });
 
   it('keeps half-open boundaries and calibration, including a counter batch at a boundary', () => {

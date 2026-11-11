@@ -1,9 +1,10 @@
-import { RainEventPayloadSchema, RainEventPayload } from '../../shared';
+import { RainEventPayloadSchema, RainEventPayload, normalizeStationId } from '../../shared';
 import { dataStore } from '../../db/store';
 import { rainfallService } from '../../services/rainfall.service';
 import { emitRainUpdate } from '../../socket/io';
 import { logger } from '../../utils/logger';
 import { advanceRainCounter, withRainLock } from '../../services/rain-counter';
+import { env } from '../../config/env';
 
 async function processRainEventMessage(topic: string, rawPayload: Buffer | string, simulated = false) {
   try {
@@ -16,6 +17,7 @@ async function processRainEventMessage(topic: string, rawPayload: Buffer | strin
     }
 
     const data: RainEventPayload = parseResult.data;
+    const deviceId = normalizeStationId(data.deviceId, topic, env.DEFAULT_STATION_ID);
 
     // Check message deduplication
     if (dataStore.isMessageProcessed(data.messageId)) {
@@ -24,15 +26,15 @@ async function processRainEventMessage(topic: string, rawPayload: Buffer | strin
     }
 
     // Retrieve station specific calibration factor (mm/tip)
-    const config = await dataStore.getConfig(data.deviceId);
+    const config = await dataStore.getConfig(deviceId);
     const calibrationFactor = config?.rainMmPerTip ?? 0.64;
-    const previous = await dataStore.getLatestMeasurement(data.deviceId);
-    const change = advanceRainCounter(data.deviceId, { tips: data.cumulativeTips, timestamp: data.timestamp, bootId: data.bootId }, previous, data.tipCount);
+    const previous = await dataStore.getLatestMeasurement(deviceId);
+    const change = advanceRainCounter(deviceId, { tips: data.cumulativeTips, timestamp: data.timestamp, bootId: data.bootId }, previous, data.tipCount);
     if (!change) return;
 
     // Save Rain Event
     const savedEvent = await dataStore.saveRainEvent({
-      deviceId: data.deviceId,
+      deviceId,
       eventId: data.messageId,
       timestamp: data.timestamp,
       tipCount: change.increment,
@@ -44,13 +46,13 @@ async function processRainEventMessage(topic: string, rawPayload: Buffer | strin
 
     if (savedEvent) {
       // Recalculate statistics
-      const stats = await rainfallService.getStatistics(data.deviceId);
+      const stats = await rainfallService.getStatistics(deviceId);
 
       // Realtime broadcast to web dashboard
-      emitRainUpdate(data.deviceId, savedEvent, stats);
+      emitRainUpdate(deviceId, savedEvent, stats);
 
       logger.info(
-        { deviceId: data.deviceId, tipCount: data.tipCount, mm: savedEvent.rainfallMm, currentRate: stats.currentRateMmH },
+        { deviceId, tipCount: data.tipCount, mm: savedEvent.rainfallMm, currentRate: stats.currentRateMmH },
         'Processed valid rain gauge bucket tip event'
       );
     }
@@ -62,7 +64,11 @@ async function processRainEventMessage(topic: string, rawPayload: Buffer | strin
 
 export async function handleRainEventMessage(topic: string, payload: Buffer | string, simulated = false) {
   let id: string;
-  try { id = String(JSON.parse(payload.toString()).deviceId); }
-  catch { return processRainEventMessage(topic, payload, simulated); }
+  try {
+    const json = JSON.parse(payload.toString());
+    id = normalizeStationId(String(json.deviceId || json.device_id || topic.split('/')[1]), topic, env.DEFAULT_STATION_ID);
+  } catch {
+    id = normalizeStationId(topic.split('/')[1], topic, env.DEFAULT_STATION_ID);
+  }
   return withRainLock(id, () => processRainEventMessage(topic, payload, simulated));
 }

@@ -8,7 +8,9 @@ import { RAIN_RULE_VERSION, rainQualityLabels, rainWindowMinutes } from '../shar
 import type { RainAlertEvidence, RainMonitorSnapshot, RainThresholdCheck } from '../shared/rain-monitor';
 import type { AlertRuleRecord } from '../shared/types/alert';
 import type { MeasurementRecord } from '../shared/types/telemetry';
+import type { RainEventRecord, RainTestPeriod } from '../shared/types/rain';
 import { normalizeStationTimezone } from '../shared/utils/time';
+import { getStationQueryAliases } from '../shared/utils/station-alias';
 import { classifyRainEvents } from './rain-ledger';
 import { availableAt, MINUTE, rainGapMs, rainPressure, rainWindow, roundRain } from './rain-observations';
 import type { RainObservations } from './rain-observations';
@@ -64,7 +66,7 @@ export function buildRainMonitor(
   }
   const evaluated = !demo && recent.rainfallMm !== null ? predictRain(input.deviceId, windows, pressure) : null;
   const observedAt = input.measurements.reduce<string | null>((latest, row) => {
-    if (row.messageId.startsWith('sim-') || row.messageId.endsWith('-def')) return latest;
+    if (row.messageId.startsWith('sim-')) return latest;
     return latest === null || row.timestamp > latest ? row.timestamp : latest;
   }, null);
   return {
@@ -194,12 +196,50 @@ export class RainMonitorService {
     const maxGapMs = rainGapMs(config?.mqttInterval);
     const from = new Date(cutoff - 1440 * MINUTE - maxGapMs).toISOString();
     const to = evaluationTime.toISOString();
-    const { value, source } = await withReadDiagnostics(() => Promise.all([
-      dataStore.getMeasurements(deviceId, { from, to, limit: 20000 }),
-      dataStore.getRainEvents(deviceId, from, to),
-      dataStore.getRainTestPeriods(deviceId),
-      dataStore.getAlertRules(deviceId)
-    ]));
+    const aliases = getStationQueryAliases(deviceId);
+
+    const { value, source } = await withReadDiagnostics(async () => {
+      const [measurementsArr, eventsArr, testsArr, rules] = await Promise.all([
+        Promise.all(aliases.map((id) => dataStore.getMeasurements(id, { from, to, limit: 20000 }))),
+        Promise.all(aliases.map((id) => dataStore.getRainEvents(id, from, to))),
+        Promise.all(aliases.map((id) => dataStore.getRainTestPeriods(id))),
+        dataStore.getAlertRules(deviceId)
+      ]);
+
+      const seenMsg = new Set<string>();
+      const measurements: MeasurementRecord[] = [];
+      for (const list of measurementsArr) {
+        for (const row of list) {
+          const canonicalId = row.messageId.replace(/-def$/, '');
+          if (seenMsg.has(canonicalId)) continue;
+          seenMsg.add(canonicalId);
+          measurements.push({ ...row, deviceId, messageId: canonicalId });
+        }
+      }
+
+      const seenEvents = new Set<string>();
+      const events: RainEventRecord[] = [];
+      for (const list of eventsArr) {
+        for (const ev of list) {
+          const key = `${ev.timestamp}-${ev.tipCount}`;
+          if (seenEvents.has(key)) continue;
+          seenEvents.add(key);
+          events.push({ ...ev, deviceId });
+        }
+      }
+
+      const seenTests = new Set<string>();
+      const tests: RainTestPeriod[] = [];
+      for (const list of testsArr) {
+        for (const t of list) {
+          if (seenTests.has(t.id)) continue;
+          seenTests.add(t.id);
+          tests.push({ ...t, deviceId });
+        }
+      }
+
+      return [measurements, events, tests, rules] as const;
+    });
     const [measurements, events, tests, rules] = value;
     if (isDbConnected() && source !== 'postgresql') throw new Error('Rain observations are only partially available');
     return buildRainMonitor({

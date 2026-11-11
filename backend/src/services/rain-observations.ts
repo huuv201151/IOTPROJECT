@@ -21,17 +21,22 @@ export function availableAt(row: { timestamp: string; createdAt: string }, cutof
 
 const isMirror = (row: MeasurementRecord) => row.messageId.endsWith('-def');
 const isSimulated = (row: MeasurementRecord) => row.messageId.startsWith('sim-');
+const isSimulatedEvent = (e: RainEventRecord) => e.eventId.startsWith('sim-') || e.testNote === 'Dữ liệu giả lập';
+const isActualWaterTest = (e: RainEventRecord) => e.dataKind === 'test' && !isSimulatedEvent(e);
 
 export function rainWindow(input: RainObservations, minutes: RainWindowMinutes, end: number): MonitoredRainWindow {
   const start = end - minutes * MINUTE;
   const bounds = { minutes, from: new Date(start).toISOString(), to: new Date(end).toISOString() };
   const unavailable = (quality: RainQuality): MonitoredRainWindow => ({ ...bounds, rainfallMm: null, averageMmH: null, quality });
-  const events = input.events.filter((event) => {
+  const allEvents = input.events.filter((event) => {
     const at = Date.parse(event.timestamp);
     return event.deviceId === input.deviceId && at >= start && (at < end || Date.parse(event.intervalFrom ?? '') < end);
   });
   if (input.tests.some((test) => test.deviceId === input.deviceId && Date.parse(test.from) < end && Date.parse(test.to) > start)
-    || events.some((event) => event.dataKind === 'test')) return unavailable('test_water');
+    || allEvents.some(isActualWaterTest)) return unavailable('test_water');
+
+  // Filter out simulated test events from demo mode so live hardware observations are not blocked
+  const events = allEvents.filter((e) => !isSimulatedEvent(e));
 
   const rows = input.measurements.filter((row) => {
     const at = Date.parse(row.timestamp);
@@ -56,11 +61,16 @@ export function rainWindow(input: RainObservations, minutes: RainWindowMinutes, 
 }
 
 export function rainPressure(input: RainObservations, end: number) {
-  const rows = input.measurements.filter((row) => row.deviceId === input.deviceId && !isMirror(row) && !isSimulated(row)
+  const nativeRows = input.measurements.filter((row) => row.deviceId === input.deviceId && !isMirror(row) && !isSimulated(row)
     && Number.isFinite(row.pressure) && row.pressure >= 300 && row.pressure <= 1100 && Date.parse(row.timestamp) <= end);
+  const rows = nativeRows.length > 0
+    ? nativeRows
+    : input.measurements.filter((row) => row.deviceId === input.deviceId && !isSimulated(row)
+      && Number.isFinite(row.pressure) && row.pressure >= 300 && row.pressure <= 1100 && Date.parse(row.timestamp) <= end);
   const nearest = (at: number) => rows.reduce<MeasurementRecord | null>((best, row) => {
     const gap = Math.abs(Date.parse(row.timestamp) - at);
-    return gap <= input.maxGapMs && (!best || gap < Math.abs(Date.parse(best.timestamp) - at)) ? row : best;
+    const tolerance = Math.max(input.maxGapMs, 15 * MINUTE);
+    return gap <= tolerance && (!best || gap < Math.abs(Date.parse(best.timestamp) - at)) ? row : best;
   }, null);
   const current = nearest(end);
   const past = nearest(end - 180 * MINUTE);

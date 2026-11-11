@@ -6,6 +6,7 @@ import { logger } from '../../utils/logger';
 import { env } from '../../config/env';
 
 import { advanceRainCounter, withRainLock } from '../../services/rain-counter';
+import { normalizeStationId } from '../../shared/utils/station-alias';
 
 async function processTelemetryMessage(topic: string, rawPayload: Buffer | string, simulated = false) {
   try {
@@ -15,7 +16,8 @@ async function processTelemetryMessage(topic: string, rawPayload: Buffer | strin
     const stationIdFromTopic = parts[1] || env.DEFAULT_STATION_ID;
 
     // Detect field mapping (Support standard schema and IOT_MQTT_TLS.ino)
-    const deviceId = (json.deviceId || json.device_id || stationIdFromTopic).trim();
+    const rawDeviceId = (json.deviceId || json.device_id || stationIdFromTopic).trim();
+    const deviceId = normalizeStationId(rawDeviceId, topic, env.DEFAULT_STATION_ID);
 
     // Temperature (IOT_MQTT_TLS.ino sends temperature_c)
     let temperature: number = -999;
@@ -186,7 +188,12 @@ async function processTelemetryMessage(topic: string, rawPayload: Buffer | strin
 
 export async function handleTelemetryMessage(topic: string, payload: Buffer | string, simulated = false) {
   let id: string;
-  try { const json = JSON.parse(payload.toString()); id = String(json.deviceId || json.device_id || topic.split('/')[1] || env.DEFAULT_STATION_ID).trim(); }
-  catch { return processTelemetryMessage(topic, payload, simulated); }
+  try {
+    const json = JSON.parse(payload.toString());
+    const raw = String(json.deviceId || json.device_id || topic.split('/')[1] || env.DEFAULT_STATION_ID).trim();
+    id = normalizeStationId(raw, topic, env.DEFAULT_STATION_ID);
+  } catch {
+    id = normalizeStationId(topic.split('/')[1] || env.DEFAULT_STATION_ID, topic, env.DEFAULT_STATION_ID);
+  }
   return withRainLock(id, () => processTelemetryMessage(topic, payload, simulated));
 }
